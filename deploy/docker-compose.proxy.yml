@@ -1,0 +1,25 @@
+# 与主 docker-compose.yml 叠加使用，提供 Caddy 自动 HTTPS
+# docker compose -f docker-compose.yml -f deploy/docker-compose.proxy.yml up -d
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: flux-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PANEL_DOMAIN: ${PANEL_DOMAIN:-panel.example.com}
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+    networks:
+      - flux-network
+
+volumes:
+  caddy_data:
+  caddy_config:

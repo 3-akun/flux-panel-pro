@@ -1,0 +1,32 @@
+# Flux Panel Pro — Caddy 自动 HTTPS 反代
+# 用法:
+#   1. 将 panel.example.com 解析到本机
+#   2. 修改下方域名
+#   3. docker compose -f docker-compose.yml -f deploy/docker-compose.proxy.yml up -d
+
+{$PANEL_DOMAIN:panel.example.com} {
+	encode gzip zstd
+
+	# 安全头
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# WebSocket（节点状态 / 系统信息）
+	handle /system-info* {
+		reverse_proxy flux-frontend:80
+	}
+
+	# 流量上报
+	handle /flow/* {
+		reverse_proxy flux-frontend:80
+	}
+
+	# API + 前端
+	handle {
+		reverse_proxy flux-frontend:80
+	}
+}
