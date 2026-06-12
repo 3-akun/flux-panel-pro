@@ -47,6 +47,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
     private static final int FORWARD_STATUS_PAUSED = 0;
     private static final int FORWARD_STATUS_ERROR = -1;
     private static final int TUNNEL_STATUS_ACTIVE = 1;
+    private static final int NODE_STATUS_ONLINE = 1;
 
     private static final long BYTES_TO_GB = 1024L * 1024L * 1024L;
 
@@ -502,6 +503,9 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
         diagnosisReport.put("forwardName", forward.getName());
         diagnosisReport.put("tunnelType", tunnel.getType() == TUNNEL_TYPE_PORT_FORWARD ? "端口转发" : "隧道转发");
         diagnosisReport.put("results", results);
+        diagnosisReport.put("summary", buildDiagnosisSummary(results));
+        diagnosisReport.put("suggestions", buildForwardSuggestions(forward, tunnel, inNode, results));
+        diagnosisReport.put("autoFixCommands", buildForwardAutoFixCommands(forward, tunnel, inNode, results));
         diagnosisReport.put("timestamp", System.currentTimeMillis());
 
         return R.ok(diagnosisReport);
@@ -719,6 +723,67 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
             result.setPacketLoss(100.0);
             return result;
         }
+    }
+
+    private Map<String, Object> buildDiagnosisSummary(List<DiagnosisResult> results) {
+        int total = results.size();
+        int success = (int) results.stream().filter(DiagnosisResult::isSuccess).count();
+        int failed = total - success;
+        int score = total == 0 ? 0 : (int) Math.round((success * 100.0) / total);
+        String status = score >= 80 ? "healthy" : score >= 50 ? "warning" : "critical";
+
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalChecks", total);
+        summary.put("successChecks", success);
+        summary.put("failedChecks", failed);
+        summary.put("score", score);
+        summary.put("status", status);
+        return summary;
+    }
+
+    private List<String> buildForwardSuggestions(Forward forward, Tunnel tunnel, Node inNode, List<DiagnosisResult> results) {
+        List<String> suggestions = new ArrayList<>();
+
+        if (inNode.getStatus() == null || inNode.getStatus() != NODE_STATUS_ONLINE) {
+            suggestions.add("入口节点离线，请先恢复节点后再启用该转发。");
+        }
+
+        boolean hasParseFail = results.stream().anyMatch(r -> !r.isSuccess() && r.getMessage() != null && r.getMessage().contains("无法解析目标地址"));
+        if (hasParseFail) {
+            suggestions.add("目标地址格式异常，请使用 ip:port 或 [ipv6]:port，多个目标用英文逗号分隔。");
+        }
+
+        boolean hasTargetFail = results.stream().anyMatch(r -> !r.isSuccess());
+        if (hasTargetFail) {
+            suggestions.add("目标连通失败，请检查目标服务端口是否监听、防火墙和云安全组策略。");
+        }
+
+        boolean hasSlow = results.stream().anyMatch(r -> r.isSuccess() && r.getAverageTime() >= 180);
+        if (hasSlow) {
+            suggestions.add("链路延迟偏高，建议优先使用就近节点或减少远距离跨区转发。");
+        }
+
+        if (tunnel.getType() == TUNNEL_TYPE_TUNNEL_FORWARD) {
+            suggestions.add("隧道转发场景建议同时检查入口->出口与出口->目标链路，避免单点误判。");
+        }
+
+        if (suggestions.isEmpty()) {
+            suggestions.add("转发链路状态良好，建议保留当前配置并定期复测。");
+        }
+        return suggestions;
+    }
+
+    private List<String> buildForwardAutoFixCommands(Forward forward, Tunnel tunnel, Node inNode, List<DiagnosisResult> results) {
+        List<String> commands = new ArrayList<>();
+        commands.add("systemctl restart gost");
+        commands.add("journalctl -u gost -n 100 --no-pager");
+        commands.add(String.format("ss -lntup | rg \"%d\"", forward.getInPort()));
+        commands.add("docker logs flux-backend --tail 200");
+
+        if (results.stream().anyMatch(r -> !r.isSuccess())) {
+            commands.add(String.format("curl -fsSL https://raw.githubusercontent.com/3-akun/flux-panel-pro/main/install.sh | bash -s -- -a %s -s <YOUR_SECRET>", inNode.getServerIp()));
+        }
+        return commands;
     }
 
     /**

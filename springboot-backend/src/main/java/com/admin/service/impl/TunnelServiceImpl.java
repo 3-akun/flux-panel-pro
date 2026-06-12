@@ -677,6 +677,9 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
         diagnosisReport.put("tunnelName", tunnel.getName());
         diagnosisReport.put("tunnelType", tunnel.getType() == TUNNEL_TYPE_PORT_FORWARD ? "端口转发" : "隧道转发");
         diagnosisReport.put("results", results);
+        diagnosisReport.put("summary", buildDiagnosisSummary(results));
+        diagnosisReport.put("suggestions", buildTunnelSuggestions(tunnel, inNode, outNode, results));
+        diagnosisReport.put("autoFixCommands", buildTunnelAutoFixCommands(tunnel, inNode, outNode, results));
         diagnosisReport.put("timestamp", System.currentTimeMillis());
 
         return R.ok(diagnosisReport);
@@ -800,6 +803,14 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
         result.setDescription(description);
         result.setTimestamp(System.currentTimeMillis());
 
+        if (node.getStatus() == null || node.getStatus() != NODE_STATUS_ONLINE) {
+            result.setSuccess(false);
+            result.setMessage("节点离线，无法发起诊断");
+            result.setAverageTime(-1.0);
+            result.setPacketLoss(100.0);
+            return result;
+        }
+
         try {
             return performTcpPingDiagnosis(node, targetIp, port, description);
         } catch (Exception e) {
@@ -809,6 +820,70 @@ public class TunnelServiceImpl extends ServiceImpl<TunnelMapper, Tunnel> impleme
             result.setPacketLoss(100.0);
             return result;
         }
+    }
+
+    private Map<String, Object> buildDiagnosisSummary(List<DiagnosisResult> results) {
+        int total = results.size();
+        int success = (int) results.stream().filter(DiagnosisResult::isSuccess).count();
+        int failed = total - success;
+        int score = total == 0 ? 0 : (int) Math.round((success * 100.0) / total);
+        String status = score >= 80 ? "healthy" : score >= 50 ? "warning" : "critical";
+
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalChecks", total);
+        summary.put("successChecks", success);
+        summary.put("failedChecks", failed);
+        summary.put("score", score);
+        summary.put("status", status);
+        return summary;
+    }
+
+    private List<String> buildTunnelSuggestions(Tunnel tunnel, Node inNode, Node outNode, List<DiagnosisResult> results) {
+        List<String> suggestions = new ArrayList<>();
+        if (inNode.getStatus() == null || inNode.getStatus() != NODE_STATUS_ONLINE) {
+            suggestions.add("入口节点离线，请先在节点页检查节点进程和 WebSocket 连接状态。");
+        }
+        if (outNode != null && (outNode.getStatus() == null || outNode.getStatus() != NODE_STATUS_ONLINE)) {
+            suggestions.add("出口节点离线，建议先恢复出口节点后再重试隧道诊断。");
+        }
+
+        boolean hasPacketLoss = results.stream().anyMatch(r -> r.isSuccess() && r.getPacketLoss() >= 5);
+        if (hasPacketLoss) {
+            suggestions.add("检测到较高丢包，建议更换链路质量更好的节点或降低单节点并发。");
+        }
+
+        boolean hasSlowLatency = results.stream().anyMatch(r -> r.isSuccess() && r.getAverageTime() >= 180);
+        if (hasSlowLatency) {
+            suggestions.add("延迟偏高，建议切换就近节点或改用更稳定协议（如 tls/tcp）。");
+        }
+
+        boolean hasFailed = results.stream().anyMatch(r -> !r.isSuccess());
+        if (hasFailed) {
+            suggestions.add("存在连通失败，请核对防火墙放行、目标端口开放和 DNS 解析。");
+        }
+
+        if (suggestions.isEmpty()) {
+            suggestions.add("当前链路状态良好，建议保持现有配置并定期巡检。");
+        }
+        return suggestions;
+    }
+
+    private List<String> buildTunnelAutoFixCommands(Tunnel tunnel, Node inNode, Node outNode, List<DiagnosisResult> results) {
+        List<String> commands = new ArrayList<>();
+        commands.add("systemctl restart gost");
+        commands.add("journalctl -u gost -n 100 --no-pager");
+        commands.add("docker logs flux-backend --tail 200");
+
+        if (results.stream().anyMatch(r -> !r.isSuccess())) {
+            commands.add("curl -fsSL https://raw.githubusercontent.com/3-akun/flux-panel-pro/main/install.sh | bash");
+        }
+
+        if (tunnel.getType() == TUNNEL_TYPE_TUNNEL_FORWARD && outNode != null) {
+            commands.add(String.format("ping -c 4 %s", outNode.getServerIp()));
+        } else {
+            commands.add(String.format("ping -c 4 %s", inNode.getServerIp()));
+        }
+        return commands;
     }
 
 

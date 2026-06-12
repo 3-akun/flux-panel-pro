@@ -93,6 +93,15 @@ interface AddressItem {
 interface DiagnosisResult {
   forwardName: string;
   timestamp: number;
+  summary?: {
+    totalChecks: number;
+    successChecks: number;
+    failedChecks: number;
+    score: number;
+    status: "healthy" | "warning" | "critical";
+  };
+  suggestions?: string[];
+  autoFixCommands?: string[];
   results: Array<{
     success: boolean;
     description: string;
@@ -2052,6 +2061,21 @@ export default function ForwardPage() {
                     </div>
                   ) : diagnosisResult ? (
                     <div className="space-y-4">
+                      {diagnosisResult.summary && (
+                        <Card className="border border-divider">
+                          <CardBody className="py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Chip color={diagnosisResult.summary.score >= 80 ? "success" : diagnosisResult.summary.score >= 50 ? "warning" : "danger"} variant="flat">
+                                健康分 {diagnosisResult.summary.score}
+                              </Chip>
+                              <Chip variant="flat">检查 {diagnosisResult.summary.totalChecks}</Chip>
+                              <Chip color="success" variant="flat">成功 {diagnosisResult.summary.successChecks}</Chip>
+                              <Chip color="danger" variant="flat">失败 {diagnosisResult.summary.failedChecks}</Chip>
+                            </div>
+                          </CardBody>
+                        </Card>
+                      )}
+
                       {diagnosisResult.results.map((result, index) => {
                         const quality = getQualityDisplay(result.averageTime, result.packetLoss);
                         
@@ -2125,6 +2149,36 @@ export default function ForwardPage() {
                           </Card>
                         );
                       })}
+
+                      {!!diagnosisResult.suggestions?.length && (
+                        <Card className="border border-warning/30">
+                          <CardHeader className="pb-2">
+                            <h4 className="font-semibold">修复建议</h4>
+                          </CardHeader>
+                          <CardBody className="pt-0 space-y-2">
+                            {diagnosisResult.suggestions.map((item, idx) => (
+                              <div key={idx} className="text-sm text-default-700 dark:text-default-300">
+                                {idx + 1}. {item}
+                              </div>
+                            ))}
+                          </CardBody>
+                        </Card>
+                      )}
+
+                      {!!diagnosisResult.autoFixCommands?.length && (
+                        <Card className="border border-primary/30">
+                          <CardHeader className="pb-2">
+                            <h4 className="font-semibold">可执行命令（手动）</h4>
+                          </CardHeader>
+                          <CardBody className="pt-0 space-y-2">
+                            {diagnosisResult.autoFixCommands.map((cmd, idx) => (
+                              <code key={idx} className="block text-xs bg-default-100 dark:bg-default-50/10 rounded px-2 py-1 break-all">
+                                {cmd}
+                              </code>
+                            ))}
+                          </CardBody>
+                        </Card>
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-16">
