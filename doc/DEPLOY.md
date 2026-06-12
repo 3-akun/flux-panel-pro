@@ -6,7 +6,20 @@
 curl -fsSL https://raw.githubusercontent.com/3-akun/flux-panel-pro/main/scripts/install-panel.sh | bash
 ```
 
-## 二、HTTPS 部署
+## 二、Docker 一键部署（非交互）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/3-akun/flux-panel-pro/main/scripts/install-docker.sh | bash
+```
+
+支持环境变量覆盖默认值：
+
+```bash
+FRONTEND_PORT=8080 BACKEND_PORT=8081 CORS_ORIGINS=https://panel.example.com \
+curl -fsSL https://raw.githubusercontent.com/3-akun/flux-panel-pro/main/scripts/install-docker.sh | bash
+```
+
+## 三、HTTPS 部署
 
 ### 方案 A：Caddy 自动证书（推荐）
 
@@ -46,7 +59,7 @@ nginx -t && systemctl reload nginx
 CORS_ORIGINS=https://panel.example.com
 ```
 
-## 三、GitHub Actions（CI/CD）
+## 四、GitHub Actions（CI/CD）
 
 工作流文件：`.github/workflows/docker-build.yml`
 
@@ -83,7 +96,7 @@ export APP_VERSION=2.0.0
 docker compose pull && docker compose up -d
 ```
 
-## 四、生产检查清单
+## 五、生产检查清单
 
 - [ ] 修改默认管理员密码
 - [ ] 设置 `CORS_ORIGINS` 为实际域名
@@ -92,7 +105,7 @@ docker compose pull && docker compose up -d
 - [ ] 防火墙仅开放 80/443（或自定义端口）
 - [ ] 面板 `网站配置` 中填写公网 IP/域名（节点安装用）
 
-## 五、备份与恢复
+## 六、备份与恢复
 
 ```bash
 # 备份

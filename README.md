@@ -17,6 +17,19 @@
 curl -fsSL https://raw.githubusercontent.com/3-akun/flux-panel-pro/main/scripts/install-panel.sh | bash
 ```
 
+### 一键 Docker（非交互，单独部署）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/3-akun/flux-panel-pro/main/scripts/install-docker.sh | bash
+```
+
+可选自定义参数（示例）：
+
+```bash
+FRONTEND_PORT=8080 BACKEND_PORT=8081 CORS_ORIGINS=https://panel.example.com \
+curl -fsSL https://raw.githubusercontent.com/3-akun/flux-panel-pro/main/scripts/install-docker.sh | bash
+```
+
 或手动：
 
 ```bash
