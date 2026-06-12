@@ -340,9 +340,12 @@ jobs:
           echo "📤 更新安装脚本..."
           gh release upload "${VERSION}" ./install.sh --clobber
           gh release upload "${VERSION}" ./panel_install.sh --clobber
+          gh release upload "${VERSION}" ./scripts/install-panel.sh --clobber
           
           # 上传 Docker Compose 配置文件（覆盖）
           echo "📤 更新 Docker Compose 配置文件..."
+          gh release upload "${VERSION}" ./docker-compose.yml --clobber
+          gh release upload "${VERSION}" ./deploy/docker-compose.proxy.yml --clobber
           gh release upload "${VERSION}" ./docker-compose-v4.yml --clobber
           gh release upload "${VERSION}" ./docker-compose-v6.yml --clobber
           
