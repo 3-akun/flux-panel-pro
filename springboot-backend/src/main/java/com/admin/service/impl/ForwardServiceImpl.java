@@ -994,6 +994,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
         Forward forward = new Forward();
         // 先复制DTO的属性，再设置其他属性，避免被覆盖
         BeanUtils.copyProperties(forwardDto, forward);
+        forward.setStrategy(normalizeStrategy(forward.getStrategy()));
         forward.setStatus(FORWARD_STATUS_ACTIVE);
         forward.setInPort(portAllocation.getInPort());
         forward.setOutPort(portAllocation.getOutPort());
@@ -1010,6 +1011,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
     private Forward updateForwardEntity(ForwardUpdateDto forwardUpdateDto, Forward existForward, Tunnel tunnel) {
         Forward forward = new Forward();
         BeanUtils.copyProperties(forwardUpdateDto, forward);
+        forward.setStrategy(normalizeStrategy(forward.getStrategy()));
 
         // 处理端口分配逻辑
         boolean tunnelChanged = !existForward.getTunnelId().equals(forwardUpdateDto.getTunnelId());
@@ -1038,6 +1040,28 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
 
         forward.setUpdatedTime(System.currentTimeMillis());
         return forward;
+    }
+
+    private String normalizeStrategy(String strategy) {
+        if (strategy == null || strategy.trim().isEmpty()) {
+            return "fifo";
+        }
+        String s = strategy.trim().toLowerCase();
+        switch (s) {
+            case "ha":
+            case "fifo":
+                return "fifo";
+            case "rr":
+            case "round":
+                return "round";
+            case "rand":
+            case "random":
+                return "random";
+            case "hash":
+                return "hash";
+            default:
+                return "fifo";
+        }
     }
 
     /**

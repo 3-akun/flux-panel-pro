@@ -85,20 +85,15 @@ public class GostUtil {
         String[] split = remoteAddr.split(",");
         int num = 1;
         for (String addr : split) {
-            JSONObject node = new JSONObject();
-            node.put("name", "node_" + num );
-            node.put("addr", addr);
+            JSONObject node = createForwarderNode(addr, num, strategy);
             nodes.add(node);
             num ++;
         }
-        if (strategy == null || strategy.equals("")){
-            strategy = "fifo";
-        }
+        strategy = normalizeStrategy(strategy);
         forwarder.put("nodes", nodes);
         JSONObject selector = new JSONObject();
         selector.put("strategy", strategy);
-        selector.put("maxFails", 1);
-        selector.put("failTimeout", "600s");
+        applySelectorPolicy(selector, strategy);
         forwarder.put("selector", selector);
 
         data.put("forwarder", forwarder);
@@ -131,20 +126,15 @@ public class GostUtil {
         String[] split = remoteAddr.split(",");
         int num = 1;
         for (String addr : split) {
-            JSONObject node = new JSONObject();
-            node.put("name", "node_" + num );
-            node.put("addr", addr);
+            JSONObject node = createForwarderNode(addr, num, strategy);
             nodes.add(node);
             num ++;
         }
-        if (strategy == null || strategy.equals("")){
-            strategy = "fifo";
-        }
+        strategy = normalizeStrategy(strategy);
         forwarder.put("nodes", nodes);
         JSONObject selector = new JSONObject();
         selector.put("strategy", strategy);
-        selector.put("maxFails", 1);
-        selector.put("failTimeout", "600s");
+        applySelectorPolicy(selector, strategy);
         forwarder.put("selector", selector);
 
         data.put("forwarder", forwarder);
@@ -365,25 +355,75 @@ public class GostUtil {
         String[] split = remoteAddr.split(",");
         int num = 1;
         for (String addr : split) {
-            JSONObject node = new JSONObject();
-            node.put("name", "node_" + num );
-            node.put("addr", addr);
+            JSONObject node = createForwarderNode(addr, num, strategy);
             nodes.add(node);
             num ++;
         }
 
-        if (strategy == null || strategy.equals("")){
-            strategy = "fifo";
-        }
+        strategy = normalizeStrategy(strategy);
 
         forwarder.put("nodes", nodes);
 
         JSONObject selector = new JSONObject();
         selector.put("strategy", strategy);
-        selector.put("maxFails", 1);
-        selector.put("failTimeout", "600s");
+        applySelectorPolicy(selector, strategy);
         forwarder.put("selector", selector);
         return forwarder;
+    }
+
+    private static JSONObject createForwarderNode(String addr, int index, String strategy) {
+        JSONObject node = new JSONObject();
+        node.put("name", "node_" + index);
+        node.put("addr", addr);
+
+        String normalized = normalizeStrategy(strategy);
+        // FIFO/HA 模式下，将首节点视为主节点，其余节点标记为 backup，实现自动主备切换。
+        if ("fifo".equals(normalized) && index > 1) {
+            JSONObject metadata = new JSONObject();
+            metadata.put("backup", true);
+            node.put("metadata", metadata);
+        }
+        return node;
+    }
+
+    private static String normalizeStrategy(String strategy) {
+        if (StringUtils.isBlank(strategy)) {
+            return "fifo";
+        }
+        String value = strategy.trim().toLowerCase();
+        if ("ha".equals(value) || "fifo".equals(value)) {
+            return "fifo";
+        }
+        if ("rr".equals(value) || "round".equals(value)) {
+            return "round";
+        }
+        if ("rand".equals(value) || "random".equals(value)) {
+            return "random";
+        }
+        if ("hash".equals(value)) {
+            return "hash";
+        }
+        return "fifo";
+    }
+
+    private static void applySelectorPolicy(JSONObject selector, String strategy) {
+        // 个人环境优先“快速自愈”：降低故障节点冷却时间，避免长期粘在坏链路。
+        switch (strategy) {
+            case "round":
+            case "random":
+                selector.put("maxFails", 2);
+                selector.put("failTimeout", "20s");
+                break;
+            case "hash":
+                selector.put("maxFails", 1);
+                selector.put("failTimeout", "30s");
+                break;
+            case "fifo":
+            default:
+                selector.put("maxFails", 1);
+                selector.put("failTimeout", "15s");
+                break;
+        }
     }
 
     private static boolean isPortForwarding(Integer fow_type) {

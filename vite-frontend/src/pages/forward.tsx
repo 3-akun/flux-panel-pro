@@ -115,6 +115,16 @@ interface DiagnosisResult {
   }>;
 }
 
+const normalizeStrategy = (strategy?: string): string => {
+  if (!strategy) return "fifo";
+  const s = strategy.toLowerCase();
+  if (s === "ha" || s === "fifo") return "fifo";
+  if (s === "rr" || s === "round") return "round";
+  if (s === "rand" || s === "random") return "random";
+  if (s === "hash") return "hash";
+  return "fifo";
+};
+
 // 添加分组接口
 interface UserGroup {
   userId: number | null;
@@ -471,7 +481,7 @@ export default function ForwardPage() {
       inPort: forward.inPort,
       remoteAddr: forward.remoteAddr.split(',').join('\n'),
       interfaceName: forward.interfaceName || '',
-      strategy: forward.strategy || 'fifo'
+      strategy: normalizeStrategy(forward.strategy)
     });
     const tunnel = tunnels.find(t => t.id === forward.tunnelId);
     setSelectedTunnel(tunnel || null);
@@ -1016,13 +1026,15 @@ export default function ForwardPage() {
 
   // 获取策略显示
   const getStrategyDisplay = (strategy: string) => {
-    switch (strategy) {
+    switch (normalizeStrategy(strategy)) {
       case 'fifo':
-        return { color: 'primary', text: '主备' };
+        return { color: 'primary', text: '主备切换' };
       case 'round':
         return { color: 'success', text: '轮询' };
-      case 'rand':
+      case 'random':
         return { color: 'warning', text: '随机' };
+      case 'hash':
+        return { color: 'secondary', text: '哈希粘性' };
       default:
         return { color: 'default', text: '未知' };
     }
@@ -1662,7 +1674,7 @@ export default function ForwardPage() {
                       >
                         <SelectItem key="fifo" >主备模式 - 自上而下</SelectItem>
                         <SelectItem key="round" >轮询模式 - 依次轮换</SelectItem>
-                        <SelectItem key="rand" >随机模式 - 随机选择</SelectItem>
+                        <SelectItem key="random" >随机模式 - 随机选择</SelectItem>
                         <SelectItem key="hash" >哈希模式 - IP哈希</SelectItem>
                       </Select>
                     )}
