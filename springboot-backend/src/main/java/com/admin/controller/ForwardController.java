@@ -97,4 +97,13 @@ public class ForwardController extends BaseController {
         return forwardService.updateForwardOrder(params);
     }
 
+    /**
+     * 获取运行时状态与自动切换信息
+     */
+    @LogAnnotation
+    @PostMapping("/runtime-status")
+    public R runtimeStatus(@RequestBody(required = false) Map<String, Object> params) {
+        return forwardService.getRuntimeStatus(params);
+    }
+
 }

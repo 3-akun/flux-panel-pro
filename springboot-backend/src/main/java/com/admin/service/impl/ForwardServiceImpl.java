@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -50,6 +51,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
     private static final int NODE_STATUS_ONLINE = 1;
 
     private static final long BYTES_TO_GB = 1024L * 1024L * 1024L;
+    private final Map<Long, ForwardRuntimeStatus> runtimeStatusCache = new ConcurrentHashMap<>();
 
     @Resource
     @Lazy
@@ -573,6 +575,30 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
         }
     }
 
+    @Override
+    public R getRuntimeStatus(Map<String, Object> params) {
+        UserInfo currentUser = getCurrentUserInfo();
+        boolean refresh = params == null || !params.containsKey("refresh")
+                || Boolean.parseBoolean(String.valueOf(params.get("refresh")));
+
+        List<Forward> forwards;
+        if (currentUser.getRoleId() == ADMIN_ROLE_ID) {
+            forwards = this.list();
+        } else {
+            forwards = this.list(new QueryWrapper<Forward>().eq("user_id", currentUser.getUserId()));
+        }
+
+        Map<Long, ForwardRuntimeStatus> result = new LinkedHashMap<>();
+        for (Forward forward : forwards) {
+            ForwardRuntimeStatus status = runtimeStatusCache.computeIfAbsent(forward.getId(), key -> initRuntimeStatus(forward));
+            if (refresh) {
+                refreshForwardRuntimeStatus(forward, status);
+            }
+            result.put(forward.getId(), status);
+        }
+        return R.ok(result);
+    }
+
     /**
      * 从地址字符串中提取IP地址
      * 支持格式: ip:port, [ipv6]:port, domain:port
@@ -722,6 +748,147 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
             result.setAverageTime(-1.0);
             result.setPacketLoss(100.0);
             return result;
+        }
+    }
+
+    private ForwardRuntimeStatus initRuntimeStatus(Forward forward) {
+        ForwardRuntimeStatus status = new ForwardRuntimeStatus();
+        status.setForwardId(forward.getId());
+        status.setStrategy(normalizeStrategy(forward.getStrategy()));
+        status.setCurrentPrimary(extractPrimaryAddress(forward.getRemoteAddr()));
+        status.setHealthScore(0);
+        status.setConsecutiveFailures(0);
+        status.setSwitchCount(0);
+        status.setLastCheckTime(System.currentTimeMillis());
+        return status;
+    }
+
+    private void refreshForwardRuntimeStatus(Forward forward, ForwardRuntimeStatus status) {
+        status.setStrategy(normalizeStrategy(forward.getStrategy()));
+        status.setCurrentPrimary(extractPrimaryAddress(forward.getRemoteAddr()));
+        status.setLastCheckTime(System.currentTimeMillis());
+        status.setLastError(null);
+
+        List<String> addresses = parseRemoteAddresses(forward.getRemoteAddr());
+        if (addresses.size() <= 1) {
+            status.setHealthScore(100);
+            status.setConsecutiveFailures(0);
+            return;
+        }
+
+        Tunnel tunnel = validateTunnel(forward.getTunnelId());
+        if (tunnel == null) {
+            status.setHealthScore(0);
+            status.setConsecutiveFailures(status.getConsecutiveFailures() + 1);
+            status.setLastError("隧道不存在");
+            return;
+        }
+
+        Node monitorNode = resolveMonitorNode(tunnel);
+        if (monitorNode == null || monitorNode.getStatus() == null || monitorNode.getStatus() != NODE_STATUS_ONLINE) {
+            status.setHealthScore(0);
+            status.setConsecutiveFailures(status.getConsecutiveFailures() + 1);
+            status.setLastError("节点离线，无法完成巡检");
+            return;
+        }
+
+        int successCount = 0;
+        int bestIndex = -1;
+        double bestLatency = Double.MAX_VALUE;
+        int total = addresses.size();
+
+        for (int i = 0; i < addresses.size(); i++) {
+            String address = addresses.get(i);
+            String ip = extractIpFromAddress(address);
+            int port = extractPortFromAddress(address);
+            if (ip == null || port <= 0) {
+                continue;
+            }
+
+            DiagnosisResult ping = performTcpPingDiagnosis(monitorNode, ip, port, "runtime-check");
+            if (ping.isSuccess()) {
+                successCount++;
+                if (ping.getAverageTime() >= 0 && ping.getAverageTime() < bestLatency) {
+                    bestLatency = ping.getAverageTime();
+                    bestIndex = i;
+                }
+            }
+        }
+
+        int successRate = total == 0 ? 0 : (int) Math.round(successCount * 100.0 / total);
+        int latencyScore = (bestLatency == Double.MAX_VALUE) ? 0 : Math.max(0, 100 - (int) Math.min(100, bestLatency));
+        int healthScore = (int) Math.round(successRate * 0.7 + latencyScore * 0.3);
+        status.setHealthScore(healthScore);
+
+        if (successCount == 0) {
+            status.setConsecutiveFailures(status.getConsecutiveFailures() + 1);
+            status.setLastError("所有目标地址连通失败");
+            return;
+        }
+
+        status.setConsecutiveFailures(0);
+
+        if ("fifo".equals(status.getStrategy()) && bestIndex > 0) {
+            String preferred = addresses.get(bestIndex);
+            boolean switched = switchPrimaryTarget(forward, tunnel, preferred);
+            if (switched) {
+                status.setCurrentPrimary(preferred);
+                status.setLastSwitchTime(System.currentTimeMillis());
+                status.setSwitchCount(status.getSwitchCount() + 1);
+            }
+        } else if (bestIndex >= 0) {
+            status.setCurrentPrimary(addresses.get(bestIndex));
+        }
+    }
+
+    private Node resolveMonitorNode(Tunnel tunnel) {
+        if (tunnel.getType() == TUNNEL_TYPE_TUNNEL_FORWARD && tunnel.getOutNodeId() != null) {
+            return nodeService.getNodeById(tunnel.getOutNodeId());
+        }
+        return nodeService.getNodeById(tunnel.getInNodeId());
+    }
+
+    private List<String> parseRemoteAddresses(String remoteAddr) {
+        if (remoteAddr == null || remoteAddr.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(remoteAddr.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
+    }
+
+    private String extractPrimaryAddress(String remoteAddr) {
+        List<String> addresses = parseRemoteAddresses(remoteAddr);
+        return addresses.isEmpty() ? "" : addresses.get(0);
+    }
+
+    private boolean switchPrimaryTarget(Forward forward, Tunnel tunnel, String preferredAddress) {
+        List<String> addresses = parseRemoteAddresses(forward.getRemoteAddr());
+        if (addresses.isEmpty() || preferredAddress.equals(addresses.get(0))) {
+            return false;
+        }
+
+        addresses.remove(preferredAddress);
+        addresses.add(0, preferredAddress);
+        String newRemoteAddr = String.join(",", addresses);
+        String oldRemoteAddr = forward.getRemoteAddr();
+
+        forward.setRemoteAddr(newRemoteAddr);
+        forward.setUpdatedTime(System.currentTimeMillis());
+        if (!this.updateById(forward)) {
+            forward.setRemoteAddr(oldRemoteAddr);
+            return false;
+        }
+
+        try {
+            updateForwardA(forward);
+            return true;
+        } catch (Exception e) {
+            log.error("自动切换主目标失败, forwardId={}", forward.getId(), e);
+            forward.setRemoteAddr(oldRemoteAddr);
+            this.updateById(forward);
+            return false;
         }
     }
 
@@ -1579,6 +1746,22 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
         public static NodeInfo error(String errorMessage) {
             return new NodeInfo(true, errorMessage, null, null);
         }
+    }
+
+    /**
+     * 运行态状态数据类（自动优选/切换可视化）
+     */
+    @Data
+    public static class ForwardRuntimeStatus {
+        private Long forwardId;
+        private String strategy;
+        private String currentPrimary;
+        private Integer healthScore;
+        private Integer consecutiveFailures;
+        private Integer switchCount;
+        private Long lastSwitchTime;
+        private Long lastCheckTime;
+        private String lastError;
     }
 
     /**

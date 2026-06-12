@@ -42,7 +42,9 @@ import {
   pauseForwardService,
   resumeForwardService,
   diagnoseForward,
-  updateForwardOrder
+  updateForwardOrder,
+  getForwardRuntimeStatus,
+  type ForwardRuntimeStatus
 } from "@/api";
 import { JwtUtil } from "@/utils/jwt";
 
@@ -182,6 +184,7 @@ export default function ForwardPage() {
   const [forwardToDelete, setForwardToDelete] = useState<Forward | null>(null);
   const [currentDiagnosisForward, setCurrentDiagnosisForward] = useState<Forward | null>(null);
   const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
+  const [runtimeStatusMap, setRuntimeStatusMap] = useState<Record<number, ForwardRuntimeStatus>>({});
   const [addressModalTitle, setAddressModalTitle] = useState('');
   const [addressList, setAddressList] = useState<AddressItem[]>([]);
   
@@ -219,6 +222,10 @@ export default function ForwardPage() {
 
   useEffect(() => {
     loadData();
+    const timer = window.setInterval(() => {
+      loadRuntimeStatus(true, true);
+    }, 15000);
+    return () => window.clearInterval(timer);
   }, []);
 
   // 切换显示模式并保存到localStorage
@@ -278,6 +285,28 @@ export default function ForwardPage() {
       }
     } catch (error) {
       console.warn('无法保存显示模式到localStorage:', error);
+    }
+  };
+
+  const loadRuntimeStatus = async (refresh = true, silent = false) => {
+    try {
+      const runtimeRes = await getForwardRuntimeStatus(refresh);
+      if (runtimeRes.code === 0) {
+        const mapped: Record<number, ForwardRuntimeStatus> = {};
+        Object.entries(runtimeRes.data || {}).forEach(([key, value]) => {
+          const id = Number(key);
+          if (!Number.isNaN(id)) {
+            mapped[id] = value as ForwardRuntimeStatus;
+          }
+        });
+        setRuntimeStatusMap(mapped);
+      } else if (!silent) {
+        toast.error(runtimeRes.msg || "获取运行状态失败");
+      }
+    } catch (error) {
+      if (!silent) {
+        toast.error("获取运行状态失败");
+      }
     }
   };
 
@@ -347,6 +376,7 @@ export default function ForwardPage() {
             }
           }
         }
+        await loadRuntimeStatus(true, true);
       } else {
         toast.error(forwardsRes.msg || '获取转发列表失败');
       }
@@ -362,6 +392,18 @@ export default function ForwardPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatRuntimeTime = (timestamp?: number): string => {
+    if (!timestamp) return "-";
+    return new Date(timestamp).toLocaleString("zh-CN", { hour12: false });
+  };
+
+  const getHealthColor = (score?: number): "success" | "warning" | "danger" | "default" => {
+    if (score === undefined || score === null) return "default";
+    if (score >= 80) return "success";
+    if (score >= 50) return "warning";
+    return "danger";
   };
 
   // 按用户和隧道分组转发数据
@@ -1197,6 +1239,7 @@ export default function ForwardPage() {
   const renderForwardCard = (forward: Forward, listeners?: any) => {
     const statusDisplay = getStatusDisplay(forward.status);
     const strategyDisplay = getStrategyDisplay(forward.strategy);
+    const runtime = runtimeStatusMap[forward.id];
     
     return (
       <Card key={forward.id} className="group shadow-sm border border-divider hover:shadow-md transition-shadow duration-200">
@@ -1287,6 +1330,23 @@ export default function ForwardPage() {
                     </svg>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* 自动切换状态 */}
+            <div className="px-2 py-1.5 rounded border border-default-200 dark:border-default-300 bg-default-50 dark:bg-default-100/40">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-default-500">自动切换状态</span>
+                <Chip size="sm" variant="flat" color={getHealthColor(runtime?.healthScore)} className="text-[10px]">
+                  健康分 {runtime?.healthScore ?? "-"}
+                </Chip>
+              </div>
+              <div className="mt-1 space-y-0.5 text-[11px] text-default-600">
+                <div className="truncate">
+                  当前主: <code className="text-foreground">{runtime?.currentPrimary || forward.remoteAddr.split(",")[0] || "-"}</code>
+                </div>
+                <div>最近切换: {formatRuntimeTime(runtime?.lastSwitchTime)}</div>
+                <div>连续失败: {runtime?.consecutiveFailures ?? 0} 次 / 总切换: {runtime?.switchCount ?? 0} 次</div>
               </div>
             </div>
 

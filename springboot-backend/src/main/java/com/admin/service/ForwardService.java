@@ -80,6 +80,13 @@ public interface ForwardService extends IService<Forward> {
      */
     R updateForwardOrder(Map<String, Object> params);
 
+    /**
+     * 获取转发运行态状态（当前主目标、健康分、切换信息）
+     * @param params 参数，支持 refresh=true/false
+     * @return 运行态数据
+     */
+    R getRuntimeStatus(Map<String, Object> params);
+
 
     void updateForwardA(Forward forward);
 }

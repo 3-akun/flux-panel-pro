@@ -61,6 +61,19 @@ export const diagnoseForward = (forwardId: number) => Network.post("/forward/dia
 
 // 转发排序操作
 export const updateForwardOrder = (data: { forwards: Array<{ id: number; inx: number }> }) => Network.post("/forward/update-order", data);
+export interface ForwardRuntimeStatus {
+  forwardId: number;
+  strategy: string;
+  currentPrimary: string;
+  healthScore: number;
+  consecutiveFailures: number;
+  switchCount: number;
+  lastSwitchTime?: number;
+  lastCheckTime?: number;
+  lastError?: string;
+}
+export const getForwardRuntimeStatus = (refresh: boolean = true) =>
+  Network.post<Record<string, ForwardRuntimeStatus>>("/forward/runtime-status", { refresh });
 
 // 限速规则CRUD操作 - 全部使用POST请求
 export const createSpeedLimit = (data: any) => Network.post("/speed-limit/create", data);
