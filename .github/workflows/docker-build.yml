@@ -266,6 +266,7 @@ jobs:
           gh release upload "${VERSION}" ./install.sh --clobber
           gh release upload "${VERSION}" ./scripts/install-panel.sh --clobber
           gh release upload "${VERSION}" ./scripts/install-docker.sh --clobber
+          gh release upload "${VERSION}" ./scripts/reset-admin-password.sh --clobber
           
           echo "📤 上传 Docker Compose 配置文件..."
           gh release upload "${VERSION}" ./docker-compose.yml --clobber
@@ -343,6 +344,7 @@ jobs:
           gh release upload "${VERSION}" ./panel_install.sh --clobber
           gh release upload "${VERSION}" ./scripts/install-panel.sh --clobber
           gh release upload "${VERSION}" ./scripts/install-docker.sh --clobber
+          gh release upload "${VERSION}" ./scripts/reset-admin-password.sh --clobber
           
           # 上传 Docker Compose 配置文件（覆盖）
           echo "📤 更新 Docker Compose 配置文件..."

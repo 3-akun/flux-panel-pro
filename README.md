@@ -30,6 +30,12 @@ FRONTEND_PORT=8080 BACKEND_PORT=8081 CORS_ORIGINS=https://panel.example.com \
 curl -fsSL https://raw.githubusercontent.com/3-akun/flux-panel-pro/main/scripts/install-docker.sh | bash
 ```
 
+### 已部署实例：一键修复管理员密码
+
+```bash
+cd flux-panel-pro && bash scripts/reset-admin-password.sh
+```
+
 或手动：
 
 ```bash

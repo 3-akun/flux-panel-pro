@@ -19,6 +19,13 @@ FRONTEND_PORT=8080 BACKEND_PORT=8081 CORS_ORIGINS=https://panel.example.com \
 curl -fsSL https://raw.githubusercontent.com/3-akun/flux-panel-pro/main/scripts/install-docker.sh | bash
 ```
 
+管理员密码异常（为空或忘记）可直接修复：
+
+```bash
+cd flux-panel-pro
+bash scripts/reset-admin-password.sh
+```
+
 ## 三、HTTPS 部署
 
 ### 方案 A：Caddy 自动证书（推荐）

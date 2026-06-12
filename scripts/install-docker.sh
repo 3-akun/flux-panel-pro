@@ -17,7 +17,11 @@ ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 AUTO_START="${AUTO_START:-true}"
 
 generate_random() {
-  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24
+  python3 - <<'PY'
+import secrets, string
+alphabet = string.ascii_letters + string.digits
+print(''.join(secrets.choice(alphabet) for _ in range(24)))
+PY
 }
 
 md5_hex() {
@@ -65,6 +69,14 @@ write_env_file() {
   mysql_root_password="$(generate_random)"
   jwt_secret="$(generate_random)$(generate_random)"
   admin_password="${ADMIN_PASSWORD:-$(generate_random)}"
+  if [[ -z "${admin_password}" ]]; then
+    echo "⚠️ 管理员密码为空，自动重试生成..."
+    admin_password="$(generate_random)"
+  fi
+  if [[ -z "${admin_password}" ]]; then
+    echo "❌ 无法生成管理员密码，请稍后重试"
+    exit 1
+  fi
 
   cat > .env <<EOF
 APP_VERSION=${APP_VERSION}
