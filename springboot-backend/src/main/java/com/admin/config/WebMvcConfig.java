@@ -86,7 +86,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(loginRateLimitInterceptor)
                 .addPathPatterns("/api/v1/user/login");
 
-        registry.addInterceptor(jwtInterceptor())
+        registry.addInterceptor(jwtInterceptor)
                 .addPathPatterns("/api/**")
                 .excludePathPatterns("/flow/**")
                 .excludePathPatterns("/api/v1/open_api/**")
