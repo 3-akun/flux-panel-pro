@@ -25,7 +25,7 @@ public interface UserService extends IService<User> {
 
     R deleteUser(Long id);
 
-    R getUserPackageInfo();
+    R getSelfOverview();
     
     R updatePassword(ChangePasswordDto changePasswordDto);
 

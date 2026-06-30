@@ -9,7 +9,7 @@ import java.util.List;
  * 自用概览信息DTO
  */
 @Data
-public class UserPackageDto {
+public class SelfOverviewDto {
     
     /**
      * 用户基本信息
@@ -27,7 +27,7 @@ public class UserPackageDto {
     private List<UserForwardDetailDto> forwards;
 
     /**
-     * 用户转发列表
+     * 流量趋势列表
      */
     private List<StatisticsFlow> statisticsFlows;
     
@@ -88,4 +88,4 @@ public class UserPackageDto {
         private Integer status;
         private Long createdTime;
     }
-} 
+}

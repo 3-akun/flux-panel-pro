@@ -10,7 +10,6 @@ const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const ForwardPage = lazy(() => import("@/pages/forward"));
 const TunnelPage = lazy(() => import("@/pages/tunnel"));
 const NodePage = lazy(() => import("@/pages/node"));
-const UserPage = lazy(() => import("@/pages/user"));
 const ProfilePage = lazy(() => import("@/pages/profile"));
 const LimitPage = lazy(() => import("@/pages/limit"));
 const ConfigPage = lazy(() => import("@/pages/config"));
@@ -196,14 +195,6 @@ function App() {
           element={
             <AdminRoute>
               <NodePage />
-            </AdminRoute>
-          } 
-        />
-        <Route 
-          path="/user" 
-          element={
-            <AdminRoute useSimpleLayout={true}>
-              <UserPage />
             </AdminRoute>
           } 
         />

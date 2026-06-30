@@ -280,7 +280,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      * @return 自用概览信息响应
      */
     @Override
-    public R getUserPackageInfo() {
+    public R getSelfOverview() {
         try {
                     // 1. 获取当前用户信息
         CurrentUserInfo currentUser = getCurrentUserInfo();
@@ -289,9 +289,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
 
             // 2. 构建自用概览信息
-            UserPackageDto packageDto = buildUserPackageDto(currentUser);
+            SelfOverviewDto overviewDto = buildSelfOverviewDto(currentUser);
             
-            return R.ok(packageDto);
+            return R.ok(overviewDto);
         } catch (Exception e) {
             e.printStackTrace();
             return R.err(ERROR_GET_PACKAGE_INFO_FAILED);
@@ -674,30 +674,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      * @param currentUser 当前用户信息
      * @return 自用概览DTO
      */
-    private UserPackageDto buildUserPackageDto(CurrentUserInfo currentUser) {
+    private SelfOverviewDto buildSelfOverviewDto(CurrentUserInfo currentUser) {
         User user = currentUser.getUser();
         Integer roleId = currentUser.getRoleId();
         
         // 1. 构造用户基本信息
-        UserPackageDto.UserInfoDto userInfo = buildUserInfoDto(user);
+        SelfOverviewDto.UserInfoDto userInfo = buildUserInfoDto(user);
         
         // 2. 获取隧道权限详情
-        List<UserPackageDto.UserTunnelDetailDto> tunnelPermissions = getTunnelPermissions(user.getId());
+        List<SelfOverviewDto.UserTunnelDetailDto> tunnelPermissions = getTunnelPermissions(user.getId());
         
         // 3. 获取转发详情
-        List<UserPackageDto.UserForwardDetailDto> forwards = userMapper.getUserForwardDetails(user.getId().intValue());
+        List<SelfOverviewDto.UserForwardDetailDto> forwards = userMapper.getUserForwardDetails(user.getId().intValue());
 
         // 4. 查询最近24小时流量信息，没有的补0
         List<StatisticsFlow> statisticsFlows = getLast24HoursFlowStatistics(user.getId());
         
         // 5. 构造返回结果
-        UserPackageDto packageDto = new UserPackageDto();
-        packageDto.setUserInfo(userInfo);
-        packageDto.setTunnelPermissions(tunnelPermissions);
-        packageDto.setForwards(forwards);
-        packageDto.setStatisticsFlows(statisticsFlows);
+        SelfOverviewDto overviewDto = new SelfOverviewDto();
+        overviewDto.setUserInfo(userInfo);
+        overviewDto.setTunnelPermissions(tunnelPermissions);
+        overviewDto.setForwards(forwards);
+        overviewDto.setStatisticsFlows(statisticsFlows);
         
-        return packageDto;
+        return overviewDto;
     }
 
     /**
@@ -706,8 +706,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      * @param user 用户对象
      * @return 用户基本信息DTO
      */
-    private UserPackageDto.UserInfoDto buildUserInfoDto(User user) {
-        UserPackageDto.UserInfoDto userInfo = new UserPackageDto.UserInfoDto();
+    private SelfOverviewDto.UserInfoDto buildUserInfoDto(User user) {
+        SelfOverviewDto.UserInfoDto userInfo = new SelfOverviewDto.UserInfoDto();
         userInfo.setId(user.getId());
         userInfo.setUser(user.getUser());
         userInfo.setStatus(user.getStatus());
@@ -728,7 +728,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      * @param userId 用户ID
      * @return 隧道权限详情列表
      */
-    private List<UserPackageDto.UserTunnelDetailDto> getTunnelPermissions(Long userId) {
+    private List<SelfOverviewDto.UserTunnelDetailDto> getTunnelPermissions(Long userId) {
         return userMapper.getUserTunnelDetails(userId.intValue());
     }
 
