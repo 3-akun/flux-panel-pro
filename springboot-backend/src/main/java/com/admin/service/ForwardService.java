@@ -87,6 +87,13 @@ public interface ForwardService extends IService<Forward> {
      */
     R getRuntimeStatus(Map<String, Object> params);
 
+    /**
+     * 获取转发健康探测快照日志
+     * @param params 参数，可选 forwardId
+     * @return 探测日志
+     */
+    R getRuntimeProbes(Map<String, Object> params);
+
 
     void updateForwardA(Forward forward);
 }

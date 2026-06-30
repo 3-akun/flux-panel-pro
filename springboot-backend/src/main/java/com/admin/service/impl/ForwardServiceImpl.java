@@ -49,9 +49,16 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
     private static final int FORWARD_STATUS_ERROR = -1;
     private static final int TUNNEL_STATUS_ACTIVE = 1;
     private static final int NODE_STATUS_ONLINE = 1;
+    private static final int AUTO_SWITCH_ENABLED = 1;
+    private static final int DEFAULT_AUTO_SWITCH_FAIL_THRESHOLD = 2;
+    private static final int DEFAULT_AUTO_SWITCH_RECOVER_THRESHOLD = 3;
+    private static final int DEFAULT_HEALTH_CHECK_INTERVAL_SEC = 15;
+    private static final int DEFAULT_HEALTH_CHECK_TIMEOUT_MS = 3000;
+    private static final int MAX_PROBE_HISTORY = 50;
 
     private static final long BYTES_TO_GB = 1024L * 1024L * 1024L;
     private final Map<Long, ForwardRuntimeStatus> runtimeStatusCache = new ConcurrentHashMap<>();
+    private final Map<Long, Deque<TargetProbeSnapshot>> runtimeProbeHistory = new ConcurrentHashMap<>();
 
     @Resource
     @Lazy
@@ -599,6 +606,36 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
         return R.ok(result);
     }
 
+    @Override
+    public R getRuntimeProbes(Map<String, Object> params) {
+        UserInfo currentUser = getCurrentUserInfo();
+        Map<Long, List<TargetProbeSnapshot>> result = new LinkedHashMap<>();
+
+        Long targetForwardId = null;
+        if (params != null && params.containsKey("forwardId")) {
+            targetForwardId = Long.valueOf(String.valueOf(params.get("forwardId")));
+        }
+
+        List<Forward> forwards;
+        if (targetForwardId != null) {
+            Forward forward = validateForwardExists(targetForwardId, currentUser);
+            if (forward == null) {
+                return R.err("转发不存在");
+            }
+            forwards = Collections.singletonList(forward);
+        } else if (currentUser.getRoleId() == ADMIN_ROLE_ID) {
+            forwards = this.list();
+        } else {
+            forwards = this.list(new QueryWrapper<Forward>().eq("user_id", currentUser.getUserId()));
+        }
+
+        for (Forward forward : forwards) {
+            Deque<TargetProbeSnapshot> history = runtimeProbeHistory.getOrDefault(forward.getId(), new ArrayDeque<>());
+            result.put(forward.getId(), new ArrayList<>(history));
+        }
+        return R.ok(result);
+    }
+
     /**
      * 从地址字符串中提取IP地址
      * 支持格式: ip:port, [ipv6]:port, domain:port
@@ -677,13 +714,17 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
      * @return 诊断结果
      */
     private DiagnosisResult performTcpPingDiagnosis(Node node, String targetIp, int port, String description) {
+        return performTcpPingDiagnosis(node, targetIp, port, description, DEFAULT_HEALTH_CHECK_TIMEOUT_MS);
+    }
+
+    private DiagnosisResult performTcpPingDiagnosis(Node node, String targetIp, int port, String description, int timeoutMs) {
         try {
             // 构建TCP ping请求数据
             JSONObject tcpPingData = new JSONObject();
             tcpPingData.put("ip", targetIp);
             tcpPingData.put("port", port);
             tcpPingData.put("count", 2);
-            tcpPingData.put("timeout", 3000); // 5秒超时
+            tcpPingData.put("timeout", timeoutMs);
 
             // 发送TCP ping命令到节点
             GostDto gostResult = WebSocketServer.send_msg(node.getId(), tcpPingData, "TcpPing");
@@ -753,26 +794,56 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
 
     private ForwardRuntimeStatus initRuntimeStatus(Forward forward) {
         ForwardRuntimeStatus status = new ForwardRuntimeStatus();
+        normalizeRuntimeConfig(forward);
         status.setForwardId(forward.getId());
         status.setStrategy(normalizeStrategy(forward.getStrategy()));
         status.setCurrentPrimary(extractPrimaryAddress(forward.getRemoteAddr()));
+        status.setPreferredTarget(forward.getPreferredTarget());
+        status.setAutoSwitchEnabled(forward.getAutoSwitchEnabled());
+        status.setAutoSwitchFailThreshold(forward.getAutoSwitchFailThreshold());
+        status.setAutoSwitchRecoverThreshold(forward.getAutoSwitchRecoverThreshold());
+        status.setHealthCheckIntervalSec(forward.getHealthCheckIntervalSec());
+        status.setHealthCheckTimeoutMs(forward.getHealthCheckTimeoutMs());
         status.setHealthScore(0);
         status.setConsecutiveFailures(0);
+        status.setPreferredRecoveries(0);
+        status.setHealthyTargets(new ArrayList<>());
+        status.setUnhealthyTargets(new ArrayList<>());
+        status.setRecentChecks(new ArrayList<>());
         status.setSwitchCount(0);
-        status.setLastCheckTime(System.currentTimeMillis());
+        status.setLastCheckTime(0L);
         return status;
     }
 
     private void refreshForwardRuntimeStatus(Forward forward, ForwardRuntimeStatus status) {
+        normalizeRuntimeConfig(forward);
+        long now = System.currentTimeMillis();
+        if (status.getLastCheckTime() != null
+                && now - status.getLastCheckTime() < forward.getHealthCheckIntervalSec() * 1000L) {
+            return;
+        }
+
         status.setStrategy(normalizeStrategy(forward.getStrategy()));
-        status.setCurrentPrimary(extractPrimaryAddress(forward.getRemoteAddr()));
-        status.setLastCheckTime(System.currentTimeMillis());
+        status.setPreferredTarget(forward.getPreferredTarget());
+        status.setAutoSwitchEnabled(forward.getAutoSwitchEnabled());
+        status.setAutoSwitchFailThreshold(forward.getAutoSwitchFailThreshold());
+        status.setAutoSwitchRecoverThreshold(forward.getAutoSwitchRecoverThreshold());
+        status.setHealthCheckIntervalSec(forward.getHealthCheckIntervalSec());
+        status.setHealthCheckTimeoutMs(forward.getHealthCheckTimeoutMs());
+        if (status.getCurrentPrimary() == null || status.getCurrentPrimary().isEmpty()) {
+            status.setCurrentPrimary(extractPrimaryAddress(forward.getRemoteAddr()));
+        }
+        status.setLastCheckTime(now);
         status.setLastError(null);
 
         List<String> addresses = parseRemoteAddresses(forward.getRemoteAddr());
         if (addresses.size() <= 1) {
             status.setHealthScore(100);
             status.setConsecutiveFailures(0);
+            status.setPreferredRecoveries(0);
+            status.setCurrentPrimary(addresses.isEmpty() ? "" : addresses.get(0));
+            status.setHealthyTargets(new ArrayList<>(addresses));
+            status.setUnhealthyTargets(new ArrayList<>());
             return;
         }
 
@@ -796,48 +867,108 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
         int bestIndex = -1;
         double bestLatency = Double.MAX_VALUE;
         int total = addresses.size();
+        Map<String, DiagnosisResult> probeResultMap = new HashMap<>();
+        List<String> healthyTargets = new ArrayList<>();
+        List<String> unhealthyTargets = new ArrayList<>();
+        List<TargetProbeSnapshot> currentSnapshots = new ArrayList<>();
 
         for (int i = 0; i < addresses.size(); i++) {
             String address = addresses.get(i);
             String ip = extractIpFromAddress(address);
             int port = extractPortFromAddress(address);
             if (ip == null || port <= 0) {
+                unhealthyTargets.add(address);
                 continue;
             }
 
-            DiagnosisResult ping = performTcpPingDiagnosis(monitorNode, ip, port, "runtime-check");
+            DiagnosisResult ping = performTcpPingDiagnosis(monitorNode, ip, port, "runtime-check", forward.getHealthCheckTimeoutMs());
+            probeResultMap.put(address, ping);
+            TargetProbeSnapshot snapshot = TargetProbeSnapshot.fromDiagnosis(address, ping);
+            currentSnapshots.add(snapshot);
+            appendProbeSnapshot(forward.getId(), snapshot);
             if (ping.isSuccess()) {
                 successCount++;
+                healthyTargets.add(address);
                 if (ping.getAverageTime() >= 0 && ping.getAverageTime() < bestLatency) {
                     bestLatency = ping.getAverageTime();
                     bestIndex = i;
                 }
+            } else {
+                unhealthyTargets.add(address);
             }
         }
+
+        status.setHealthyTargets(healthyTargets);
+        status.setUnhealthyTargets(unhealthyTargets);
+        status.setRecentChecks(currentSnapshots);
 
         int successRate = total == 0 ? 0 : (int) Math.round(successCount * 100.0 / total);
         int latencyScore = (bestLatency == Double.MAX_VALUE) ? 0 : Math.max(0, 100 - (int) Math.min(100, bestLatency));
         int healthScore = (int) Math.round(successRate * 0.7 + latencyScore * 0.3);
         status.setHealthScore(healthScore);
 
-        if (successCount == 0) {
+        String currentPrimary = status.getCurrentPrimary();
+        if (!addresses.contains(currentPrimary)) {
+            currentPrimary = addresses.get(0);
+            status.setCurrentPrimary(currentPrimary);
+        }
+
+        DiagnosisResult currentResult = probeResultMap.get(currentPrimary);
+        boolean currentHealthy = currentResult != null && currentResult.isSuccess();
+        if (currentHealthy) {
+            status.setConsecutiveFailures(0);
+        } else {
             status.setConsecutiveFailures(status.getConsecutiveFailures() + 1);
+            status.setLastError(currentResult == null ? "当前主目标检测失败" : currentResult.getMessage());
+        }
+
+        if (successCount == 0) {
+            status.setPreferredRecoveries(0);
             status.setLastError("所有目标地址连通失败");
             return;
         }
 
-        status.setConsecutiveFailures(0);
+        boolean isFifo = "fifo".equals(status.getStrategy());
+        boolean autoSwitchEnabled = Objects.equals(status.getAutoSwitchEnabled(), AUTO_SWITCH_ENABLED);
 
-        if ("fifo".equals(status.getStrategy()) && bestIndex > 0) {
-            String preferred = addresses.get(bestIndex);
-            boolean switched = switchPrimaryTarget(forward, tunnel, preferred);
+        if (!isFifo && bestIndex >= 0) {
+            status.setCurrentPrimary(addresses.get(bestIndex));
+        }
+
+        if (isFifo && autoSwitchEnabled && !currentHealthy
+                && status.getConsecutiveFailures() >= status.getAutoSwitchFailThreshold() && bestIndex >= 0) {
+            String candidate = addresses.get(bestIndex);
+            boolean switched = switchPrimaryTarget(forward, tunnel, candidate);
             if (switched) {
-                status.setCurrentPrimary(preferred);
+                status.setCurrentPrimary(candidate);
                 status.setLastSwitchTime(System.currentTimeMillis());
                 status.setSwitchCount(status.getSwitchCount() + 1);
+                status.setConsecutiveFailures(0);
+                status.setPreferredRecoveries(0);
             }
-        } else if (bestIndex >= 0) {
-            status.setCurrentPrimary(addresses.get(bestIndex));
+            return;
+        }
+
+        if (isFifo && autoSwitchEnabled && status.getPreferredTarget() != null
+                && !status.getPreferredTarget().isEmpty()
+                && !status.getPreferredTarget().equals(status.getCurrentPrimary())
+                && addresses.contains(status.getPreferredTarget())) {
+            DiagnosisResult preferredResult = probeResultMap.get(status.getPreferredTarget());
+            if (preferredResult != null && preferredResult.isSuccess()) {
+                int recoveries = status.getPreferredRecoveries() == null ? 0 : status.getPreferredRecoveries();
+                status.setPreferredRecoveries(recoveries + 1);
+                if (status.getPreferredRecoveries() >= status.getAutoSwitchRecoverThreshold()) {
+                    boolean switchedBack = switchPrimaryTarget(forward, tunnel, status.getPreferredTarget());
+                    if (switchedBack) {
+                        status.setCurrentPrimary(status.getPreferredTarget());
+                        status.setLastSwitchTime(System.currentTimeMillis());
+                        status.setSwitchCount(status.getSwitchCount() + 1);
+                        status.setPreferredRecoveries(0);
+                    }
+                }
+            }
+        } else {
+            status.setPreferredRecoveries(0);
         }
     }
 
@@ -889,6 +1020,14 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
             forward.setRemoteAddr(oldRemoteAddr);
             this.updateById(forward);
             return false;
+        }
+    }
+
+    private void appendProbeSnapshot(Long forwardId, TargetProbeSnapshot snapshot) {
+        Deque<TargetProbeSnapshot> history = runtimeProbeHistory.computeIfAbsent(forwardId, key -> new ArrayDeque<>());
+        history.addFirst(snapshot);
+        while (history.size() > MAX_PROBE_HISTORY) {
+            history.removeLast();
         }
     }
 
@@ -1162,6 +1301,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
         // 先复制DTO的属性，再设置其他属性，避免被覆盖
         BeanUtils.copyProperties(forwardDto, forward);
         forward.setStrategy(normalizeStrategy(forward.getStrategy()));
+        normalizeRuntimeConfig(forward);
         forward.setStatus(FORWARD_STATUS_ACTIVE);
         forward.setInPort(portAllocation.getInPort());
         forward.setOutPort(portAllocation.getOutPort());
@@ -1179,6 +1319,7 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
         Forward forward = new Forward();
         BeanUtils.copyProperties(forwardUpdateDto, forward);
         forward.setStrategy(normalizeStrategy(forward.getStrategy()));
+        normalizeRuntimeConfig(forward);
 
         // 处理端口分配逻辑
         boolean tunnelChanged = !existForward.getTunnelId().equals(forwardUpdateDto.getTunnelId());
@@ -1229,6 +1370,34 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
             default:
                 return "fifo";
         }
+    }
+
+    private void normalizeRuntimeConfig(Forward forward) {
+        List<String> addresses = parseRemoteAddresses(forward.getRemoteAddr());
+        String defaultPreferredTarget = addresses.isEmpty() ? "" : addresses.get(0);
+
+        if (forward.getAutoSwitchEnabled() == null) {
+            forward.setAutoSwitchEnabled(AUTO_SWITCH_ENABLED);
+        }
+        forward.setAutoSwitchFailThreshold(sanitizeRange(forward.getAutoSwitchFailThreshold(), 1, 20, DEFAULT_AUTO_SWITCH_FAIL_THRESHOLD));
+        forward.setAutoSwitchRecoverThreshold(sanitizeRange(forward.getAutoSwitchRecoverThreshold(), 1, 20, DEFAULT_AUTO_SWITCH_RECOVER_THRESHOLD));
+        forward.setHealthCheckIntervalSec(sanitizeRange(forward.getHealthCheckIntervalSec(), 5, 300, DEFAULT_HEALTH_CHECK_INTERVAL_SEC));
+        forward.setHealthCheckTimeoutMs(sanitizeRange(forward.getHealthCheckTimeoutMs(), 500, 10000, DEFAULT_HEALTH_CHECK_TIMEOUT_MS));
+
+        String preferredTarget = forward.getPreferredTarget();
+        if (preferredTarget == null || preferredTarget.trim().isEmpty() || !addresses.contains(preferredTarget.trim())) {
+            preferredTarget = defaultPreferredTarget;
+        } else {
+            preferredTarget = preferredTarget.trim();
+        }
+        forward.setPreferredTarget(preferredTarget);
+    }
+
+    private int sanitizeRange(Integer value, int min, int max, int defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        return Math.max(min, Math.min(max, value));
     }
 
     /**
@@ -1756,12 +1925,43 @@ public class ForwardServiceImpl extends ServiceImpl<ForwardMapper, Forward> impl
         private Long forwardId;
         private String strategy;
         private String currentPrimary;
+        private String preferredTarget;
+        private Integer autoSwitchEnabled;
+        private Integer autoSwitchFailThreshold;
+        private Integer autoSwitchRecoverThreshold;
+        private Integer healthCheckIntervalSec;
+        private Integer healthCheckTimeoutMs;
         private Integer healthScore;
         private Integer consecutiveFailures;
+        private Integer preferredRecoveries;
+        private List<String> healthyTargets;
+        private List<String> unhealthyTargets;
+        private List<TargetProbeSnapshot> recentChecks;
         private Integer switchCount;
         private Long lastSwitchTime;
         private Long lastCheckTime;
         private String lastError;
+    }
+
+    @Data
+    public static class TargetProbeSnapshot {
+        private String address;
+        private Boolean success;
+        private Double averageTime;
+        private Double packetLoss;
+        private String message;
+        private Long timestamp;
+
+        static TargetProbeSnapshot fromDiagnosis(String address, DiagnosisResult diagnosisResult) {
+            TargetProbeSnapshot snapshot = new TargetProbeSnapshot();
+            snapshot.setAddress(address);
+            snapshot.setSuccess(diagnosisResult.isSuccess());
+            snapshot.setAverageTime(diagnosisResult.getAverageTime());
+            snapshot.setPacketLoss(diagnosisResult.getPacketLoss());
+            snapshot.setMessage(diagnosisResult.getMessage());
+            snapshot.setTimestamp(diagnosisResult.getTimestamp());
+            return snapshot;
+        }
     }
 
     /**

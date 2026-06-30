@@ -56,6 +56,12 @@ interface Forward {
   remoteAddr: string;
   interfaceName?: string;
   strategy: string;
+  autoSwitchEnabled?: number;
+  autoSwitchFailThreshold?: number;
+  autoSwitchRecoverThreshold?: number;
+  healthCheckIntervalSec?: number;
+  healthCheckTimeoutMs?: number;
+  preferredTarget?: string;
   status: number;
   inFlow: number;
   outFlow: number;
@@ -82,6 +88,12 @@ interface ForwardForm {
   remoteAddr: string;
   interfaceName?: string;
   strategy: string;
+  autoSwitchEnabled: boolean;
+  autoSwitchFailThreshold: number;
+  autoSwitchRecoverThreshold: number;
+  healthCheckIntervalSec: number;
+  healthCheckTimeoutMs: number;
+  preferredTarget: string;
 }
 
 interface AddressItem {
@@ -204,7 +216,13 @@ export default function ForwardPage() {
     inPort: null,
     remoteAddr: '',
     interfaceName: '',
-    strategy: 'fifo'
+    strategy: 'fifo',
+    autoSwitchEnabled: true,
+    autoSwitchFailThreshold: 2,
+    autoSwitchRecoverThreshold: 3,
+    healthCheckIntervalSec: 15,
+    healthCheckTimeoutMs: 3000,
+    preferredTarget: ''
   });
   
   // 表单验证错误
@@ -465,7 +483,13 @@ export default function ForwardPage() {
       inPort: null,
       remoteAddr: '',
       interfaceName: '',
-      strategy: 'fifo'
+      strategy: 'fifo',
+      autoSwitchEnabled: true,
+      autoSwitchFailThreshold: 2,
+      autoSwitchRecoverThreshold: 3,
+      healthCheckIntervalSec: 15,
+      healthCheckTimeoutMs: 3000,
+      preferredTarget: ''
     });
     setSelectedTunnel(null);
     setErrors({});
@@ -483,7 +507,13 @@ export default function ForwardPage() {
       inPort: forward.inPort,
       remoteAddr: forward.remoteAddr.split(',').join('\n'),
       interfaceName: forward.interfaceName || '',
-      strategy: normalizeStrategy(forward.strategy)
+      strategy: normalizeStrategy(forward.strategy),
+      autoSwitchEnabled: (forward.autoSwitchEnabled ?? 1) === 1,
+      autoSwitchFailThreshold: forward.autoSwitchFailThreshold ?? 2,
+      autoSwitchRecoverThreshold: forward.autoSwitchRecoverThreshold ?? 3,
+      healthCheckIntervalSec: forward.healthCheckIntervalSec ?? 15,
+      healthCheckTimeoutMs: forward.healthCheckTimeoutMs ?? 3000,
+      preferredTarget: forward.preferredTarget || ''
     });
     const tunnel = tunnels.find(t => t.id === forward.tunnelId);
     setSelectedTunnel(tunnel || null);
@@ -550,6 +580,7 @@ export default function ForwardPage() {
         .join(',');
 
       const addressCount = processedRemoteAddr.split(',').length;
+      const preferredTarget = form.preferredTarget || processedRemoteAddr.split(',')[0] || '';
       
       let res;
       if (isEdit) {
@@ -562,7 +593,13 @@ export default function ForwardPage() {
           inPort: form.inPort,
           remoteAddr: processedRemoteAddr,
           interfaceName: form.interfaceName,
-          strategy: addressCount > 1 ? form.strategy : 'fifo'
+          strategy: addressCount > 1 ? form.strategy : 'fifo',
+          autoSwitchEnabled: addressCount > 1 && form.autoSwitchEnabled ? 1 : 0,
+          autoSwitchFailThreshold: form.autoSwitchFailThreshold,
+          autoSwitchRecoverThreshold: form.autoSwitchRecoverThreshold,
+          healthCheckIntervalSec: form.healthCheckIntervalSec,
+          healthCheckTimeoutMs: form.healthCheckTimeoutMs,
+          preferredTarget
         };
         res = await updateForward(updateData);
       } else {
@@ -573,7 +610,13 @@ export default function ForwardPage() {
           inPort: form.inPort,
           remoteAddr: processedRemoteAddr,
           interfaceName: form.interfaceName,
-          strategy: addressCount > 1 ? form.strategy : 'fifo'
+          strategy: addressCount > 1 ? form.strategy : 'fifo',
+          autoSwitchEnabled: addressCount > 1 && form.autoSwitchEnabled ? 1 : 0,
+          autoSwitchFailThreshold: form.autoSwitchFailThreshold,
+          autoSwitchRecoverThreshold: form.autoSwitchRecoverThreshold,
+          healthCheckIntervalSec: form.healthCheckIntervalSec,
+          healthCheckTimeoutMs: form.healthCheckTimeoutMs,
+          preferredTarget
         };
         res = await createForward(createData);
       }
@@ -1035,6 +1078,11 @@ export default function ForwardPage() {
     return addresses.length;
   };
 
+  const getAddressOptions = (addressString: string): string[] => {
+    if (!addressString) return [];
+    return addressString.split('\n').map(addr => addr.trim()).filter(addr => addr);
+  };
+
   // 处理拖拽结束
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -1284,8 +1332,14 @@ export default function ForwardPage() {
                 <div className="truncate">
                   当前主: <code className="text-foreground">{runtime?.currentPrimary || forward.remoteAddr.split(",")[0] || "-"}</code>
                 </div>
+                <div className="truncate">
+                  首选主: <code className="text-foreground">{runtime?.preferredTarget || "-"}</code>
+                </div>
                 <div>最近切换: {formatRuntimeTime(runtime?.lastSwitchTime)}</div>
-                <div>连续失败: {runtime?.consecutiveFailures ?? 0} 次 / 总切换: {runtime?.switchCount ?? 0} 次</div>
+                <div>连续失败: {runtime?.consecutiveFailures ?? 0} 次 / 回切连续成功: {runtime?.preferredRecoveries ?? 0} 次</div>
+                <div>阈值: 失败 {runtime?.autoSwitchFailThreshold ?? "-"} / 回切 {runtime?.autoSwitchRecoverThreshold ?? "-"} / 间隔 {runtime?.healthCheckIntervalSec ?? "-"}s</div>
+                <div>健康落地: {runtime?.healthyTargets?.length ?? 0} / 异常落地: {runtime?.unhealthyTargets?.length ?? 0}</div>
+                <div>自动切换: {runtime?.autoSwitchEnabled === 1 ? "开启" : "关闭"} / 总切换: {runtime?.switchCount ?? 0} 次</div>
               </div>
             </div>
 
@@ -1630,22 +1684,92 @@ export default function ForwardPage() {
                     />
                     
                     {getAddressCount(form.remoteAddr) > 1 && (
-                      <Select
-                        label="负载策略"
-                        placeholder="请选择负载均衡策略"
-                        selectedKeys={[form.strategy]}
-                        onSelectionChange={(keys) => {
-                          const selectedKey = Array.from(keys)[0] as string;
-                          setForm(prev => ({ ...prev, strategy: selectedKey }));
-                        }}
-                        variant="bordered"
-                        description="多个目标地址的负载均衡策略"
-                      >
-                        <SelectItem key="fifo" >主备模式 - 自上而下</SelectItem>
-                        <SelectItem key="round" >轮询模式 - 依次轮换</SelectItem>
-                        <SelectItem key="random" >随机模式 - 随机选择</SelectItem>
-                        <SelectItem key="hash" >哈希模式 - IP哈希</SelectItem>
-                      </Select>
+                      <div className="space-y-4">
+                        <Select
+                          label="负载策略"
+                          placeholder="请选择负载均衡策略"
+                          selectedKeys={[form.strategy]}
+                          onSelectionChange={(keys) => {
+                            const selectedKey = Array.from(keys)[0] as string;
+                            setForm(prev => ({ ...prev, strategy: selectedKey }));
+                          }}
+                          variant="bordered"
+                          description="多个目标地址的负载均衡策略"
+                        >
+                          <SelectItem key="fifo" >主备模式 - 自上而下</SelectItem>
+                          <SelectItem key="round" >轮询模式 - 依次轮换</SelectItem>
+                          <SelectItem key="random" >随机模式 - 随机选择</SelectItem>
+                          <SelectItem key="hash" >哈希模式 - IP哈希</SelectItem>
+                        </Select>
+
+                        <div className="rounded-lg border border-divider p-3 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">自动切换/回切</p>
+                              <p className="text-xs text-default-500">仅在主备策略下生效，按健康探测自动切换落地</p>
+                            </div>
+                            <Switch
+                              isSelected={form.autoSwitchEnabled}
+                              onValueChange={(checked) => setForm(prev => ({ ...prev, autoSwitchEnabled: checked }))}
+                              isDisabled={form.strategy !== 'fifo'}
+                            />
+                          </div>
+
+                          <Select
+                            label="首选落地"
+                            placeholder="选择首选落地地址"
+                            selectedKeys={form.preferredTarget ? [form.preferredTarget] : []}
+                            onSelectionChange={(keys) => {
+                              const selectedKey = Array.from(keys)[0] as string;
+                              setForm(prev => ({ ...prev, preferredTarget: selectedKey || '' }));
+                            }}
+                            variant="bordered"
+                          >
+                            {getAddressOptions(form.remoteAddr).map((addr) => (
+                              <SelectItem key={addr}>{addr}</SelectItem>
+                            ))}
+                          </Select>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <Input
+                              type="number"
+                              label="失败切换阈值"
+                              value={String(form.autoSwitchFailThreshold)}
+                              onChange={(e) => setForm(prev => ({ ...prev, autoSwitchFailThreshold: Number(e.target.value) || 2 }))}
+                              min={1}
+                              max={20}
+                              variant="bordered"
+                            />
+                            <Input
+                              type="number"
+                              label="恢复回切阈值"
+                              value={String(form.autoSwitchRecoverThreshold)}
+                              onChange={(e) => setForm(prev => ({ ...prev, autoSwitchRecoverThreshold: Number(e.target.value) || 3 }))}
+                              min={1}
+                              max={20}
+                              variant="bordered"
+                            />
+                            <Input
+                              type="number"
+                              label="探测间隔(秒)"
+                              value={String(form.healthCheckIntervalSec)}
+                              onChange={(e) => setForm(prev => ({ ...prev, healthCheckIntervalSec: Number(e.target.value) || 15 }))}
+                              min={5}
+                              max={300}
+                              variant="bordered"
+                            />
+                            <Input
+                              type="number"
+                              label="探测超时(毫秒)"
+                              value={String(form.healthCheckTimeoutMs)}
+                              onChange={(e) => setForm(prev => ({ ...prev, healthCheckTimeoutMs: Number(e.target.value) || 3000 }))}
+                              min={500}
+                              max={10000}
+                              variant="bordered"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </ModalBody>

@@ -104,6 +104,10 @@ GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o gost
 3. 定期执行面板「导出备份」
 4. 节点密钥勿泄露，定期轮换
 
+## 数据库升级（已有部署）
+
+若你是从旧版本直接升级，请先执行 `forward-runtime-migration.sql`，为 `forward` 表补齐自动切换与健康探测配置字段。
+
 详细部署与 HTTPS 配置见 [doc/DEPLOY.md](doc/DEPLOY.md)。
 
 ## 开源协议
