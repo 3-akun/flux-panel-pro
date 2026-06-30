@@ -106,4 +106,13 @@ public class ForwardController extends BaseController {
         return forwardService.getRuntimeStatus(params);
     }
 
+    /**
+     * 获取运行时健康探测快照
+     */
+    @LogAnnotation
+    @PostMapping("/runtime-probes")
+    public R runtimeProbes(@RequestBody(required = false) Map<String, Object> params) {
+        return forwardService.getRuntimeProbes(params);
+    }
+
 }

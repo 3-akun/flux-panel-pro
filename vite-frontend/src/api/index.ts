@@ -57,8 +57,18 @@ export interface ForwardRuntimeStatus {
   forwardId: number;
   strategy: string;
   currentPrimary: string;
+  preferredTarget?: string;
+  autoSwitchEnabled?: number;
+  autoSwitchFailThreshold?: number;
+  autoSwitchRecoverThreshold?: number;
+  healthCheckIntervalSec?: number;
+  healthCheckTimeoutMs?: number;
   healthScore: number;
   consecutiveFailures: number;
+  preferredRecoveries?: number;
+  healthyTargets?: string[];
+  unhealthyTargets?: string[];
+  recentChecks?: TargetProbeSnapshot[];
   switchCount: number;
   lastSwitchTime?: number;
   lastCheckTime?: number;
@@ -66,6 +76,18 @@ export interface ForwardRuntimeStatus {
 }
 export const getForwardRuntimeStatus = (refresh: boolean = true) =>
   Network.post<Record<string, ForwardRuntimeStatus>>("/forward/runtime-status", { refresh });
+
+export interface TargetProbeSnapshot {
+  address: string;
+  success: boolean;
+  averageTime: number;
+  packetLoss: number;
+  message: string;
+  timestamp: number;
+}
+
+export const getForwardRuntimeProbes = (forwardId?: number) =>
+  Network.post<Record<string, TargetProbeSnapshot[]>>("/forward/runtime-probes", forwardId ? { forwardId } : {});
 
 // 限速规则CRUD操作 - 全部使用POST请求
 export const createSpeedLimit = (data: any) => Network.post("/speed-limit/create", data);

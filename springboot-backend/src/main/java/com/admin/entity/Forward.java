@@ -36,6 +36,18 @@ public class Forward extends BaseEntity{
 
     private String strategy;
 
+    private Integer autoSwitchEnabled;
+
+    private Integer autoSwitchFailThreshold;
+
+    private Integer autoSwitchRecoverThreshold;
+
+    private Integer healthCheckIntervalSec;
+
+    private Integer healthCheckTimeoutMs;
+
+    private String preferredTarget;
+
     private Long inFlow;
 
     private Long outFlow;
