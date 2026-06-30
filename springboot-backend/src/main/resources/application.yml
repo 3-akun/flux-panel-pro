@@ -42,7 +42,8 @@ jwt-secret: ${JWT_SECRET}
 log-dir: ${LOG_DIR}
 
 app:
-  cors-origins: ${CORS_ORIGINS:*}
+  cors-origins: ${CORS_ORIGINS:http://localhost:6366}
+  open-api-enabled: ${OPEN_API_ENABLED:false}
 
 
 captcha:

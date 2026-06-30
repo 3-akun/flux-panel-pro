@@ -19,6 +19,7 @@ import (
 var (
 	httpReportURL   string
 	configReportURL string
+	httpNodeSecret  string
 	httpAESCrypto   *crypto.AESCrypto
 
 	httpReportClient = &http.Client{
@@ -48,8 +49,9 @@ func SetHTTPReportURL(addr string, secret string) {
 		host = strings.TrimPrefix(addr, "http://")
 	}
 
-	httpReportURL = scheme + "://" + host + "/flow/upload?secret=" + secret
-	configReportURL = scheme + "://" + host + "/flow/config?secret=" + secret
+	httpReportURL = scheme + "://" + host + "/flow/upload"
+	configReportURL = scheme + "://" + host + "/flow/config"
+	httpNodeSecret = secret
 
 	// 创建 AES 加密器
 	var err error
@@ -101,6 +103,7 @@ func sendTrafficReport(ctx context.Context, reportItems TrafficReportItem) (bool
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "GOST-Traffic-Reporter/1.0")
+	req.Header.Set("X-Node-Secret", httpNodeSecret)
 
 	resp, err := httpReportClient.Do(req)
 	if err != nil {
@@ -171,6 +174,7 @@ func sendConfigReport(ctx context.Context) (bool, error) {
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Config-Reporter/1.0")
+	req.Header.Set("X-Node-Secret", httpNodeSecret)
 
 	resp, err := httpReportClient.Do(req)
 	if err != nil {

@@ -60,6 +60,12 @@ public class UserController extends BaseController {
     }
 
     @LogAnnotation
+    @PostMapping("/overview")
+    public R getSelfUseOverview() {
+        return userService.getUserPackageInfo();
+    }
+
+    @LogAnnotation
     @PostMapping("/package")
     public R getUserPackageInfo() {
         return userService.getUserPackageInfo();

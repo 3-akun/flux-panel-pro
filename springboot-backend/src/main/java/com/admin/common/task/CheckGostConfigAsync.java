@@ -5,7 +5,6 @@ import com.admin.common.lang.R;
 import com.admin.common.utils.GostUtil;
 import com.admin.entity.*;
 import com.admin.service.*;
-import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -43,12 +42,12 @@ public class CheckGostConfigAsync {
      */
     @Async
     public void cleanNodeConfigs(String node_id, GostConfigDto gostConfig) {
-        System.out.println(JSONObject.toJSONString(gostConfig));
         Node node = nodeService.getById(node_id);
         if (node != null) {
             cleanOrphanedServices(gostConfig, node);
             cleanOrphanedChains(gostConfig, node);
             cleanOrphanedLimiters(gostConfig, node);
+            syncLimiters(gostConfig, node);
         }
     }
 
@@ -75,8 +74,7 @@ public class CheckGostConfigAsync {
                             Forward forward = forwardService.getById(forwardId);
                             if (forward == null) {
                                 log.info("删除孤立的服务: {} (节点: {})", service.getName(), node.getId());
-                                GostDto gostDto = GostUtil.DeleteService(node.getId(), forwardId + "_" + userId + "_" + userTunnelId);
-                                System.out.println(gostDto);
+                                GostUtil.DeleteService(node.getId(), forwardId + "_" + userId + "_" + userTunnelId);
                             }
                         }
 
@@ -155,12 +153,11 @@ public class CheckGostConfigAsync {
         List<Tunnel> tunnelList = tunnelService.list(new QueryWrapper<Tunnel>().eq("in_node_id", node.getId()));
         if (tunnelList == null || tunnelList.isEmpty()) return;
         safeExecute(() -> {
-            StringBuilder tunnelIds = new StringBuilder();
+            List<Long> tunnelIds = new ArrayList<>();
             for (Tunnel tunnel : tunnelList) {
-                tunnelIds.append(tunnel.getId()).append(",");
+                tunnelIds.add(tunnel.getId());
             }
-            String ids = tunnelIds.deleteCharAt(tunnelIds.length() - 1).toString();
-            List<SpeedLimit> speedLimits = speedLimitService.list(new QueryWrapper<SpeedLimit>().in("tunnel_id", ids));
+            List<SpeedLimit> speedLimits = speedLimitService.list(new QueryWrapper<SpeedLimit>().in("tunnel_id", tunnelIds));
             if (speedLimits != null && !speedLimits.isEmpty()) {
                 List<ConfigItem> limiters = gostConfig.getLimiters();
                 List<Long> limiters_ids = new ArrayList<>();
@@ -175,7 +172,7 @@ public class CheckGostConfigAsync {
                 }
                 List<Long> diff = new ArrayList<>(speedLimits_ids);
                 diff.removeAll(limiters_ids);
-                System.out.println(diff);
+                log.debug("节点 {} 缺失限流器: {}", node.getId(), diff);
                 if (!diff.isEmpty()) {
 
                     for (Long speed_id : diff) {

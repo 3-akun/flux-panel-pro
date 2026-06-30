@@ -1,5 +1,6 @@
 import axios, { AxiosResponse } from 'axios';
 import { getPanelAddresses, isWebViewFunc} from '@/utils/panel';
+import { safeLogout } from '@/utils/logout';
 
 
 interface PanelAddress {
@@ -44,10 +45,7 @@ interface ApiResponse<T = any> {
 
 // 处理token失效的逻辑
 function handleTokenExpired() {
-  // 清除localStorage中的token
-  window.localStorage.removeItem('token');
-  window.localStorage.removeItem('role_id');
-  window.localStorage.removeItem('name');
+  safeLogout();
   
   // 跳转到登录页面
   if (window.location.pathname !== '/') {
@@ -83,6 +81,7 @@ const Network = {
           // 检查是否token失效
           if (isTokenExpired(response.data)) {
             handleTokenExpired();
+            resolve(response.data);
             return;
           }
           resolve(response.data);
@@ -93,6 +92,7 @@ const Network = {
            // 检查是否是401错误（token失效）
            if (error.response && error.response.status === 401) {
              handleTokenExpired();
+             resolve({"code": 401, "msg": "未登录或token已过期", "data": null as T});
              return;
            }
            
@@ -120,6 +120,7 @@ const Network = {
           // 检查是否token失效
           if (isTokenExpired(response.data)) {
             handleTokenExpired();
+            resolve(response.data);
             return;
           }
           resolve(response.data);
@@ -130,6 +131,7 @@ const Network = {
            // 检查是否是401错误（token失效）
            if (error.response && error.response.status === 401) {
              handleTokenExpired();
+             resolve({"code": 401, "msg": "未登录或token已过期", "data": null as T});
              return;
            }
            

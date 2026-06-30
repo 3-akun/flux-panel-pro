@@ -31,7 +31,7 @@ public class BaseEntity implements Serializable {
     private Long updatedTime;
 
     /**
-     * 状态（0：正常，1：删除）
+     * 状态字段由各业务实体定义含义；用户场景中 1 表示启用，0 表示禁用。
      */
     private Integer status;
 } 

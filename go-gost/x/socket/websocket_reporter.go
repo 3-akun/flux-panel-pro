@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync" // 新增：用于管理连接状态的互斥锁
@@ -230,7 +231,7 @@ func (w *WebSocketReporter) connect() error {
 	}
 
 	// 使用最新的配置重新构建 URL
-	currentURL := buildNodeWSURL(w.addr, w.secret, w.version, cfg.Http, cfg.Tls, cfg.Socks)
+	currentURL := buildNodeWSURL(w.addr, w.version, cfg.Http, cfg.Tls, cfg.Socks)
 
 	u, err := url.Parse(currentURL)
 	if err != nil {
@@ -240,7 +241,9 @@ func (w *WebSocketReporter) connect() error {
 	dialer := websocket.DefaultDialer
 	dialer.HandshakeTimeout = 10 * time.Second
 
-	conn, _, err := dialer.Dial(u.String(), nil)
+	header := http.Header{}
+	header.Set("X-Node-Secret", w.secret)
+	conn, _, err := dialer.Dial(u.String(), header)
 	if err != nil {
 		return fmt.Errorf("连接WebSocket失败: %v", err)
 	}
@@ -522,13 +525,7 @@ func (w *WebSocketReporter) handleReceivedMessage(messageType int, message []byt
 
 // routeCommand 路由命令到对应的处理函数
 func (w *WebSocketReporter) routeCommand(cmd CommandMessage) {
-	jsonBytes, errs := json.Marshal(cmd)
-	if errs != nil {
-		fmt.Println("Error marshaling JSON:", errs)
-		return
-	}
-
-	fmt.Println("🔔 收到命令: ", string(jsonBytes))
+	fmt.Printf("🔔 收到命令: %s\n", cmd.Type)
 	var err error
 	var response CommandResponse
 
@@ -1073,7 +1070,7 @@ func getMemoryInfo() MemoryInfo {
 }
 
 // buildNodeWSURL 构建节点 WebSocket 连接 URL
-func buildNodeWSURL(addr, secret, version string, http, tls, socks int) string {
+func buildNodeWSURL(addr, version string, http, tls, socks int) string {
 	scheme := "ws"
 	host := addr
 	if strings.HasPrefix(addr, "ws://") || strings.HasPrefix(addr, "wss://") {
@@ -1082,13 +1079,13 @@ func buildNodeWSURL(addr, secret, version string, http, tls, socks int) string {
 		}
 		host = strings.TrimPrefix(strings.TrimPrefix(addr, "wss://"), "ws://")
 	}
-	return fmt.Sprintf("%s://%s/system-info?type=1&secret=%s&version=%s&http=%d&tls=%d&socks=%d",
-		scheme, host, secret, version, http, tls, socks)
+	return fmt.Sprintf("%s://%s/system-info?type=1&version=%s&http=%d&tls=%d&socks=%d",
+		scheme, host, version, http, tls, socks)
 }
 
 // StartWebSocketReporterWithConfig 使用配置字段启动WebSocket报告器
 func StartWebSocketReporterWithConfig(addr string, secret string, http int, tls int, socks int, version string) *WebSocketReporter {
-	fullURL := buildNodeWSURL(addr, secret, version, http, tls, socks)
+	fullURL := buildNodeWSURL(addr, version, http, tls, socks)
 
 	fmt.Printf("🔗 WebSocket 连接目标: %s\n", addr)
 

@@ -46,41 +46,41 @@ public class LogAspect {
     public void log(JoinPoint joinPoint, Object returnValue) throws Throwable {
         // 获取请求信息
         HttpServletRequest request = HttpContextUtils.getHttpServletRequest();
-        
+
         // 获取请求方法类型（POST/GET等）
         String requestMethod = request.getMethod();
-        
+
         // 获取用户ID
         String authorization = request.getHeader("Authorization") + "";
         Object user_id = "未登录"; // 请求用户的id
         if (!authorization.equals("null")) {
             user_id = JwtUtil.getUserIdFromToken(authorization);
         }
-        
+
         // 获取请求IP
         String ipAddr = IpUtils.getIpAddr(request);
-        
+
         // 获取方法签名信息
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
         Method method = signature.getMethod();
-        
+
         // 获取控制器方法名
         String className = joinPoint.getTarget().getClass().getName();
         String methodName = signature.getName();
         String controllerMethod = className + "." + methodName;
-        
+
 
         // 获取请求参数
-        String requestParams = getRequestParams(joinPoint);
-        
+        String requestParams = maskSensitive(getRequestParams(joinPoint));
+
         // 获取返回参数
-        String responseParams = returnValue != null ? JSON.toJSONString(returnValue) : "无返回值";
-        
+        String responseParams = returnValue != null ? maskSensitive(JSON.toJSONString(returnValue)) : "无返回值";
+
         // 合并为一条完整的日志信息
         String logMessage = String.format(
             "【请求日志】用户ID:[%s], IP地址:[%s], 请求方式:[%s], 控制器方法:[%s], 请求参数:[%s], 返回参数:[%s]", user_id, ipAddr, requestMethod, controllerMethod, requestParams, responseParams
         );
-        
+
         // 打印单条完整日志
         log.info(logMessage);
     }
@@ -100,49 +100,49 @@ public class LogAspect {
         try {
             // 获取请求信息
             HttpServletRequest request = HttpContextUtils.getHttpServletRequest();
-            
+
             // 获取请求方法类型（POST/GET等）
             String requestMethod = request.getMethod();
-            
+
             // 获取用户ID
             String authorization = request.getHeader("Authorization") + "";
             Object user_id = "未登录"; // 请求用户的id
             if (!authorization.equals("null")) {
                 user_id = JwtUtil.getUserIdFromToken(authorization);
             }
-            
+
             // 获取请求IP
             String ipAddr = IpUtils.getIpAddr(request);
-            
+
             // 获取方法签名信息
             MethodSignature signature = (MethodSignature) joinPoint.getSignature();
             Method method = signature.getMethod();
-            
+
             // 获取控制器方法名
             String className = joinPoint.getTarget().getClass().getName();
             String methodName = signature.getName();
             String controllerMethod = className + "." + methodName;
-            
 
-            
+
+
             // 获取请求参数
-            String requestParams = getRequestParams(joinPoint);
-            
+            String requestParams = maskSensitive(getRequestParams(joinPoint));
+
             // 获取异常信息
             String exceptionMsg = ex != null ? ex.getMessage() : "未知异常";
-            
+
             // 合并为一条完整的异常日志信息
             String errorMessage = String.format(
                 "【异常日志】用户ID:[%s], IP地址:[%s], 请求方式:[%s], 控制器方法:[%s], 请求参数:[%s], 异常信息:[%s]", user_id, ipAddr, requestMethod, controllerMethod, requestParams, exceptionMsg
             );
-            
+
             // 打印单条完整异常日志
             log.info(errorMessage, ex);
         } catch (Exception e) {
             log.info("记录异常日志时出错: {}", e.getMessage());
         }
     }
-    
+
     /**
      * 获取请求参数
      */
@@ -160,7 +160,7 @@ public class LogAspect {
                     if (args[0] instanceof String && ((String) args[0]).startsWith("{") && ((String) args[0]).endsWith("}")) {
                         return (String) args[0];
                     }
-                    
+
                     // 如果参数是普通对象，直接序列化
                     try {
                         return JSON.toJSONString(args[0]);
@@ -189,5 +189,15 @@ public class LogAspect {
         } catch (Exception e) {
             return "获取参数失败: " + e.getMessage();
         }
+    }
+
+    private String maskSensitive(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value
+                .replaceAll("(?i)(\"(?:pwd|password|secret|token|authorization)\"\\s*:\\s*\")[^\"]*(\")", "$1******$2")
+                .replaceAll("(?i)((?:pwd|password|secret|token|authorization)=)[^&\\s,}]+", "$1******")
+                .replaceAll("(?i)(-s\\s+)[^\\s]+", "$1******");
     }
 }

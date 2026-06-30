@@ -33,7 +33,7 @@ import java.util.Objects;
 /**
  * <p>
  * 用户服务实现类
- * 提供用户的增删改查功能，包括用户登录、创建、更新、删除和套餐信息查询
+ * 提供用户的增删改查功能，包括用户登录、创建、更新、删除和自用概览查询
  * 支持用户关联数据的级联删除，包括转发和Gost服务的清理
  * </p>
  *
@@ -74,7 +74,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private static final String ERROR_CANNOT_DELETE_ADMIN = "不能删除管理员用户";
     private static final String ERROR_CANNOT_UPDATE_ADMIN = "不能修改管理员用户信息";
     private static final String ERROR_USER_NOT_LOGGED_IN = "用户未登录或token无效";
-    private static final String ERROR_GET_PACKAGE_INFO_FAILED = "获取套餐信息失败";
+    private static final String ERROR_GET_PACKAGE_INFO_FAILED = "获取自用概览失败";
     private static final String ERROR_CURRENT_PASSWORD_WRONG = "当前密码错误";
     private static final String ERROR_PASSWORD_NOT_MATCH = "新密码和确认密码不匹配";
 
@@ -274,10 +274,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     /**
-     * 获取用户套餐信息
-     * 包括用户基本信息、隧道权限详情和转发详情
+     * 获取自用概览信息
+     * 包括用户基本信息、隧道权限详情、转发详情和流量统计
      * 
-     * @return 用户套餐信息响应
+     * @return 自用概览信息响应
      */
     @Override
     public R getUserPackageInfo() {
@@ -288,7 +288,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             return R.err(currentUser.getErrorMessage());
         }
 
-            // 2. 构建套餐信息
+            // 2. 构建自用概览信息
             UserPackageDto packageDto = buildUserPackageDto(currentUser);
             
             return R.ok(packageDto);
@@ -407,7 +407,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      * @return 是否是默认凭据
      */
     private boolean isDefaultCredentials(String username, String password) {
-        return DEFAULT_USERNAME.equals(username) || DEFAULT_PASSWORD.equals(password);
+        return DEFAULT_USERNAME.equals(username) && DEFAULT_PASSWORD.equals(password);
     }
 
     /**
@@ -669,10 +669,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     }
 
     /**
-     * 构建用户套餐信息DTO
+     * 构建自用概览DTO
      * 
      * @param currentUser 当前用户信息
-     * @return 用户套餐信息DTO
+     * @return 自用概览DTO
      */
     private UserPackageDto buildUserPackageDto(CurrentUserInfo currentUser) {
         User user = currentUser.getUser();

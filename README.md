@@ -1,6 +1,18 @@
 # Flux Panel Pro
 
-基于 [3-akun/flux-panel](https://github.com/3-akun/flux-panel) 深度优化的**生产级**流量转发面板，聚焦安全性、性能与开箱即用部署。
+基于 [3-akun/flux-panel](https://github.com/3-akun/flux-panel) 深度优化的个人自用流量转发面板，第一版 MVP 聚焦安全、稳定、可长期运行的 TCP/UDP 中转。
+
+## 第一版 MVP 范围
+
+第一版只做个人自用场景，不做商城、支付、套餐、自动续费和公开用户系统。
+
+已纳入第一版的能力：
+
+- TCP/UDP 中转
+- 隧道管理
+- 链路探测
+- 限速
+- 流量统计
 
 ## 相比原版的改进
 

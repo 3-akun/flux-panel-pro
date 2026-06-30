@@ -10,6 +10,7 @@ import com.admin.entity.User;
 import com.admin.entity.UserTunnel;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Objects;
@@ -19,6 +20,9 @@ import java.util.Objects;
 @RequestMapping("/api/v1/open_api")
 public class OpenApiController extends BaseController {
 
+    @Value("${app.open-api-enabled:false}")
+    private boolean openApiEnabled;
+
     @LogAnnotation
     @GetMapping("/sub_store")
     public Object create(
@@ -26,6 +30,9 @@ public class OpenApiController extends BaseController {
             @RequestParam("pwd") String pwd,
             @RequestParam(value = "tunnel", required = false, defaultValue = "-1") String tunnel,
             HttpServletResponse response) {
+        if (!openApiEnabled) {
+            return R.err("公开订阅接口已关闭");
+        }
         JSONObject result = new JSONObject();
         result.put("upload", 0);
         result.put("download", 0);

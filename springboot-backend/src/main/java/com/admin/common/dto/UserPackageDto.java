@@ -6,7 +6,7 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * 用户套餐信息DTO
+ * 自用概览信息DTO
  */
 @Data
 public class UserPackageDto {

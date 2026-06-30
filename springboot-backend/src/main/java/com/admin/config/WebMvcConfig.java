@@ -23,7 +23,7 @@ import java.util.List;
 @EnableWebMvc
 public class WebMvcConfig implements WebMvcConfigurer {
 
-    @Value("${app.cors-origins:*}")
+    @Value("${app.cors-origins:http://localhost:6366}")
     private String corsOrigins;
 
     @Resource
@@ -49,7 +49,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     private List<String> parseOrigins(String value) {
         if (!StringUtils.hasText(value)) {
-            return List.of("*");
+            return List.of("http://localhost:6366");
         }
         return Arrays.stream(value.split(","))
                 .map(String::trim)

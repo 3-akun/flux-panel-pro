@@ -10,6 +10,7 @@ import { Logo } from '@/components/icons';
 import { updatePassword } from '@/api';
 import { safeLogout } from '@/utils/logout';
 import { siteConfig } from '@/config/site';
+import { isAdmin as hasAdminRole } from '@/utils/auth';
 
 interface MenuItem {
   path: string;
@@ -130,17 +131,8 @@ export default function AdminLayout({
     // 获取用户信息
     const name = localStorage.getItem('name') || 'Admin';
     
-    // 兼容处理：如果没有admin字段，根据role_id判断（0为管理员）
-    let adminFlag = localStorage.getItem('admin') === 'true';
-    if (localStorage.getItem('admin') === null) {
-      const roleId = parseInt(localStorage.getItem('role_id') || '1', 10);
-      adminFlag = roleId === 0;
-      // 补充设置admin字段，避免下次再次判断
-      localStorage.setItem('admin', adminFlag.toString());
-    }
-    
     setUsername(name);
-    setIsAdmin(adminFlag);
+    setIsAdmin(hasAdminRole());
 
     // 响应式检查
     checkMobile();

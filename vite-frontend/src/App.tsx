@@ -1,7 +1,7 @@
 import { Route, Routes, useNavigate } from "react-router-dom";
 import { Suspense, lazy, useEffect, useState } from "react";
 
-import { isLoggedIn } from "@/utils/auth";
+import { isAdmin, isLoggedIn } from "@/utils/auth";
 import { siteConfig } from "@/config/site";
 
 const IndexPage = lazy(() => import("@/pages/index"));
@@ -92,6 +92,27 @@ const ProtectedRoute = ({ children, useSimpleLayout = false, skipLayout = false 
   );
 };
 
+const AdminRoute = ({ children, useSimpleLayout = false }: { children: React.ReactNode, useSimpleLayout?: boolean }) => {
+  const navigate = useNavigate();
+  const authorized = isLoggedIn() && isAdmin();
+
+  useEffect(() => {
+    if (!authorized) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [authorized, navigate]);
+
+  if (!authorized) {
+    return <PageLoader />;
+  }
+
+  return (
+    <ProtectedRoute useSimpleLayout={useSimpleLayout}>
+      {children}
+    </ProtectedRoute>
+  );
+};
+
 const LoginRoute = () => {
   const authenticated = isLoggedIn();
   const navigate = useNavigate();
@@ -165,25 +186,25 @@ function App() {
         <Route 
           path="/tunnel" 
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <TunnelPage />
-            </ProtectedRoute>
+            </AdminRoute>
           } 
         />
         <Route 
           path="/node" 
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <NodePage />
-            </ProtectedRoute>
+            </AdminRoute>
           } 
         />
         <Route 
           path="/user" 
           element={
-            <ProtectedRoute useSimpleLayout={true}>
+            <AdminRoute useSimpleLayout={true}>
               <UserPage />
-            </ProtectedRoute>
+            </AdminRoute>
           } 
         />
         <Route 
@@ -197,22 +218,26 @@ function App() {
         <Route 
           path="/limit" 
           element={
-            <ProtectedRoute useSimpleLayout={true}>
+            <AdminRoute useSimpleLayout={true}>
               <LimitPage />
-            </ProtectedRoute>
+            </AdminRoute>
           } 
         />
         <Route 
           path="/config" 
           element={
-            <ProtectedRoute useSimpleLayout={true}>
+            <AdminRoute useSimpleLayout={true}>
               <ConfigPage />
-            </ProtectedRoute>
+            </AdminRoute>
           } 
         />
         <Route 
           path="/settings" 
-          element={<SettingsPage />}
+          element={
+            <ProtectedRoute useSimpleLayout={true}>
+              <SettingsPage />
+            </ProtectedRoute>
+          }
         />
       </Routes>
     </Suspense>

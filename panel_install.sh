@@ -50,6 +50,8 @@ install_panel() {
   FRONTEND_PORT=${FRONTEND_PORT:-6366}
   read -p "后端端口 [6365]: " BACKEND_PORT
   BACKEND_PORT=${BACKEND_PORT:-6365}
+  read -p "允许访问面板的前端来源，例如 https://panel.example.com [http://localhost:${FRONTEND_PORT}]: " CORS_ORIGINS
+  CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT}}
 
   DB_NAME="flux_$(generate_random | tr '[:upper:]' '[:lower:]')"
   DB_USER="u_$(generate_random | tr '[:upper:]' '[:lower:]')"
@@ -68,7 +70,7 @@ DB_USER=${DB_USER}
 DB_PASSWORD=${DB_PASSWORD}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
 JWT_SECRET=${JWT_SECRET}
-CORS_ORIGINS=*
+CORS_ORIGINS=${CORS_ORIGINS}
 ADMIN_USER=${ADMIN_USER}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
 EOF

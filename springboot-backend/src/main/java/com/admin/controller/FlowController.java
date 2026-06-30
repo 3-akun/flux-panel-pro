@@ -101,7 +101,10 @@ public class FlowController extends BaseController {
 
     @PostMapping("/config")
     @LogAnnotation
-    public String config(@RequestBody String rawData, String secret) {
+    public String config(@RequestBody String rawData,
+                         @RequestHeader(value = "X-Node-Secret", required = false) String headerSecret,
+                         @RequestParam(value = "secret", required = false) String querySecret) {
+        String secret = resolveNodeSecret(headerSecret, querySecret);
         Node node = nodeService.getOne(new QueryWrapper<Node>().eq("secret", secret));
         if (node == null) return SUCCESS_RESPONSE;
 
@@ -137,7 +140,10 @@ public class FlowController extends BaseController {
      */
     @RequestMapping("/upload")
     @LogAnnotation
-    public String uploadFlowData(@RequestBody String rawData, String secret) {
+    public String uploadFlowData(@RequestBody String rawData,
+                                 @RequestHeader(value = "X-Node-Secret", required = false) String headerSecret,
+                                 @RequestParam(value = "secret", required = false) String querySecret) {
+        String secret = resolveNodeSecret(headerSecret, querySecret);
         // 1. 验证节点权限
         if (!isValidNode(secret)) {
             return SUCCESS_RESPONSE;
@@ -303,9 +309,14 @@ public class FlowController extends BaseController {
         for (Forward forward : forwardList) {
             Tunnel tunnel = tunnelService.getById(forward.getTunnelId());
             if (tunnel != null){
-                GostUtil.PauseService(tunnel.getInNodeId(), name);
+                String serviceName = buildServiceName(
+                        forward.getId().toString(),
+                        forward.getUserId().toString(),
+                        forward.getUserTunnelId() == null ? DEFAULT_USER_TUNNEL_ID : forward.getUserTunnelId().toString()
+                );
+                GostUtil.PauseService(tunnel.getInNodeId(), serviceName);
                 if (tunnel.getType() == 2){
-                    GostUtil.PauseRemoteService(tunnel.getOutNodeId(), name);
+                    GostUtil.PauseRemoteService(tunnel.getOutNodeId(), serviceName);
                 }
             }
             forward.setStatus(0);
@@ -393,15 +404,30 @@ public class FlowController extends BaseController {
     }
 
     private boolean isValidNode(String secret) {
+        if (secret == null || secret.isBlank()) {
+            return false;
+        }
         int nodeCount = nodeService.count(new QueryWrapper<Node>().eq("secret", secret));
         return nodeCount > 0;
     }
 
     private String[] parseServiceName(String serviceName) {
-        return serviceName.split("_");
+        String[] parts = serviceName.split("_");
+        if (parts.length < 3) {
+            throw new IllegalArgumentException("服务名格式错误");
+        }
+        return parts;
     }
 
     private String buildServiceName(String forwardId, String userId, String userTunnelId) {
         return forwardId + "_" + userId + "_" + userTunnelId;
+    }
+
+    private String resolveNodeSecret(String headerSecret, String querySecret) {
+        if (headerSecret != null && !headerSecret.isBlank()) {
+            return headerSecret;
+        }
+        // 兼容旧节点，后续版本可移除 query secret。
+        return querySecret;
     }
 }

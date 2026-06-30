@@ -6,7 +6,9 @@ import toast from 'react-hot-toast';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 
-import { getUserPackageInfo } from "@/api";
+import { getSelfUseOverview } from "@/api";
+import { mvpScope } from "@/config/mvp";
+import { isAdmin as hasAdminRole } from "@/utils/auth";
 
 interface UserInfo {
   flow: number;
@@ -93,13 +95,13 @@ export default function DashboardPage() {
         if (diffDays <= 7 && diffDays > 0) {
           hasNotification = true;
           if (diffDays === 1) {
-            toast('账户将于明天过期，请及时续费', { 
+            toast('账户将于明天到期，请及时续期或调整配置', {
               icon: '⚠️',
               duration: 6000,
               style: { background: '#f59e0b', color: '#fff' }
             });
           } else {
-            toast(`账户将于${diffDays}天后过期，请及时续费`, { 
+            toast(`账户将于${diffDays}天后到期，请及时续期或调整配置`, {
               icon: '⚠️',
               duration: 6000,
               style: { background: '#f59e0b', color: '#fff' }
@@ -107,7 +109,7 @@ export default function DashboardPage() {
           }
         } else if (diffDays <= 0) {
           hasNotification = true;
-          toast('账户已过期，请立即续费', { 
+          toast('账户已到期，请续期或调整配置', {
             icon: '⚠️',
             duration: 8000,
             style: { background: '#ef4444', color: '#fff' }
@@ -167,18 +169,16 @@ export default function DashboardPage() {
     setForwardList([]);
     setStatisticsFlows([]);
     
-    // 检查用户是否是管理员
-    const adminStatus = localStorage.getItem('admin');
-    setIsAdmin(adminStatus === 'true');
+    setIsAdmin(hasAdminRole());
     
-    loadPackageData();
+    loadOverviewData();
     localStorage.setItem('e', '/dashboard');
   }, []);
 
-  const loadPackageData = async () => {
+  const loadOverviewData = async () => {
     setLoading(true);
     try {
-      const res = await getUserPackageInfo();
+      const res = await getSelfUseOverview();
       if (res.code === 0) {
         const data = res.data;
         setUserInfo(data.userInfo || {});
@@ -189,11 +189,11 @@ export default function DashboardPage() {
         // 检查有效期并显示通知
         checkExpirationNotifications(data.userInfo, data.tunnelPermissions || []);
       } else {
-        toast.error(res.msg || '获取套餐信息失败');
+        toast.error(res.msg || '获取自用概览失败');
       }
     } catch (error) {
-      console.error('获取套餐信息失败:', error);
-      toast.error('获取套餐信息失败');
+      console.error('获取自用概览失败:', error);
+      toast.error('获取自用概览失败');
     } finally {
       setLoading(false);
     }
@@ -590,6 +590,27 @@ export default function DashboardPage() {
       return (
       
         <div className="px-3 lg:px-6 py-2 lg:py-4">
+
+         <Card className="mb-6 border border-primary-200 dark:border-primary-500/20 bg-primary-50/60 dark:bg-primary-500/10 shadow-sm">
+           <CardBody className="p-4 lg:p-5">
+             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+               <div>
+                 <p className="text-xs font-medium text-primary mb-1">{mvpScope.title}</p>
+                 <h1 className="text-lg lg:text-xl font-semibold text-foreground">{mvpScope.summary}</h1>
+               </div>
+               <div className="flex flex-wrap gap-2">
+                 {mvpScope.includedFeatures.map((feature) => (
+                   <span
+                     key={feature}
+                     className="px-2.5 py-1 rounded-full bg-white/80 dark:bg-black/30 border border-primary-100 dark:border-primary-500/20 text-xs text-primary"
+                   >
+                     {feature}
+                   </span>
+                 ))}
+               </div>
+             </div>
+           </CardBody>
+         </Card>
 
                           {/* 响应式统计卡片 */}
          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6 lg:mb-8">
