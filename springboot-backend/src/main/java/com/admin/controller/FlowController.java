@@ -309,10 +309,11 @@ public class FlowController extends BaseController {
         for (Forward forward : forwardList) {
             Tunnel tunnel = tunnelService.getById(forward.getTunnelId());
             if (tunnel != null){
+                String userTunnelId = resolveUserTunnelId(forward);
                 String serviceName = buildServiceName(
                         forward.getId().toString(),
                         forward.getUserId().toString(),
-                        forward.getUserTunnelId() == null ? DEFAULT_USER_TUNNEL_ID : forward.getUserTunnelId().toString()
+                        userTunnelId
                 );
                 GostUtil.PauseService(tunnel.getInNodeId(), serviceName);
                 if (tunnel.getType() == 2){
@@ -322,6 +323,16 @@ public class FlowController extends BaseController {
             forward.setStatus(0);
             forwardService.updateById(forward);
         }
+    }
+
+    private String resolveUserTunnelId(Forward forward) {
+        if (forward == null || forward.getUserId() == null || forward.getTunnelId() == null) {
+            return DEFAULT_USER_TUNNEL_ID;
+        }
+        UserTunnel userTunnel = userTunnelService.getOne(new QueryWrapper<UserTunnel>()
+                .eq("user_id", forward.getUserId())
+                .eq("tunnel_id", forward.getTunnelId()));
+        return userTunnel == null ? DEFAULT_USER_TUNNEL_ID : String.valueOf(userTunnel.getId());
     }
 
     private FlowDto filterFlowData(FlowDto flowDto, Forward forward, int flowType) {
