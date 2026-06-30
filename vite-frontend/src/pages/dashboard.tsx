@@ -608,6 +608,28 @@ export default function DashboardPage() {
            </CardBody>
          </Card>
 
+         <Card className="mb-6 border border-warning-200 dark:border-warning-500/20 bg-warning-50/60 dark:bg-warning-500/10 shadow-sm">
+           <CardBody className="p-4 lg:p-5">
+             <div className="flex items-start gap-3">
+               <div className="mt-0.5 text-warning-600 dark:text-warning-300">
+                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                   <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-7a1 1 0 00-1 1v3a1 1 0 102 0V7a1 1 0 00-1-1z" clipRule="evenodd" />
+                 </svg>
+               </div>
+               <div className="space-y-2">
+                 <p className="text-sm font-semibold text-warning-700 dark:text-warning-300">免责声明与合规提醒</p>
+                 <ul className="space-y-1">
+                   {mvpScope.legalNotices.map((notice) => (
+                     <li key={notice} className="text-xs lg:text-sm text-warning-700/90 dark:text-warning-200/90">
+                       - {notice}
+                     </li>
+                   ))}
+                 </ul>
+               </div>
+             </div>
+           </CardBody>
+         </Card>
+
                           {/* 响应式统计卡片 */}
          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6 lg:mb-8">
            <Card className="border border-gray-200 dark:border-default-200 shadow-md hover:shadow-lg transition-shadow">
