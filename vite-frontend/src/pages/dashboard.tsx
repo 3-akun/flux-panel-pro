@@ -8,7 +8,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 
 import { getSelfUseOverview } from "@/api";
 import { mvpScope } from "@/config/mvp";
-import { isAdmin as hasAdminRole } from "@/utils/auth";
 
 interface UserInfo {
   flow: number;
@@ -65,7 +64,6 @@ export default function DashboardPage() {
   const [userTunnels, setUserTunnels] = useState<UserTunnel[]>([]);
   const [forwardList, setForwardList] = useState<Forward[]>([]);
   const [statisticsFlows, setStatisticsFlows] = useState<StatisticsFlow[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
   
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [addressModalTitle, setAddressModalTitle] = useState('');
@@ -83,7 +81,7 @@ export default function DashboardPage() {
     
     let hasNotification = false;
     
-    // 检查主账户有效期
+    // 检查主信息有效期
     if (userInfo.expTime) {
       const expDate = new Date(userInfo.expTime);
       const now = new Date();
@@ -95,13 +93,13 @@ export default function DashboardPage() {
         if (diffDays <= 7 && diffDays > 0) {
           hasNotification = true;
           if (diffDays === 1) {
-            toast('账户将于明天到期，请及时续期或调整配置', {
+            toast('主信息将于明天到期，请及时检查配置', {
               icon: '⚠️',
               duration: 6000,
               style: { background: '#f59e0b', color: '#fff' }
             });
           } else {
-            toast(`账户将于${diffDays}天后到期，请及时续期或调整配置`, {
+            toast(`主信息将于${diffDays}天后到期，请及时检查配置`, {
               icon: '⚠️',
               duration: 6000,
               style: { background: '#f59e0b', color: '#fff' }
@@ -109,7 +107,7 @@ export default function DashboardPage() {
           }
         } else if (diffDays <= 0) {
           hasNotification = true;
-          toast('账户已到期，请续期或调整配置', {
+          toast('主信息已到期，请及时检查配置', {
             icon: '⚠️',
             duration: 8000,
             style: { background: '#ef4444', color: '#fff' }
@@ -168,8 +166,6 @@ export default function DashboardPage() {
     setUserTunnels([]);
     setForwardList([]);
     setStatisticsFlows([]);
-    
-    setIsAdmin(hasAdminRole());
     
     loadOverviewData();
     localStorage.setItem('e', '/dashboard');
@@ -666,7 +662,7 @@ export default function DashboardPage() {
              <CardBody className="p-3 lg:p-4">
                <div className="flex flex-col space-y-2">
                  <div className="flex items-center justify-between">
-                   <p className="text-xs lg:text-sm text-default-600 truncate">转发配额</p>
+                  <p className="text-xs lg:text-sm text-default-600 truncate">转发上限</p>
                    <div className="p-1.5 lg:p-2 bg-purple-100 dark:bg-purple-500/20 rounded-lg flex-shrink-0">
                      <svg className="w-4 h-4 lg:w-5 lg:h-5 text-purple-600 dark:text-purple-400" fill="currentColor" viewBox="0 0 20 20">
                        <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -777,15 +773,14 @@ export default function DashboardPage() {
            </CardBody>
          </Card>
 
-                 {/* 隧道权限 - 管理员不显示 */}
-         {!isAdmin && (
+                 {/* 隧道列表 */}
           <Card className="mb-6 lg:mb-8 border border-gray-200 dark:border-default-200 shadow-md">
            <CardHeader className="pb-3">
              <div className="flex items-center gap-2">
                <svg className="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 20 20">
                  <path fillRule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clipRule="evenodd" />
                </svg>
-               <h2 className="text-lg lg:text-xl font-semibold text-foreground">隧道权限</h2>
+               <h2 className="text-lg lg:text-xl font-semibold text-foreground">隧道列表</h2>
                <span className="px-2 py-1 bg-default-100 dark:bg-default-50 text-default-600 rounded-full text-xs">
                  {userTunnels.length}
                </span>
@@ -797,7 +792,7 @@ export default function DashboardPage() {
                 <svg className="w-12 h-12 text-default-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                 </svg>
-                <p className="text-default-500">暂无隧道权限</p>
+                <p className="text-default-500">暂无隧道数据</p>
               </div>
             ) : (
                              <div className="space-y-3">
@@ -826,7 +821,7 @@ export default function DashboardPage() {
                        
                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
                          <div>
-                           <p className="text-sm text-default-600 mb-1">流量配额</p>
+                          <p className="text-sm text-default-600 mb-1">流量上限</p>
                            <p className="font-semibold text-foreground">{formatFlow(tunnel.flow, 'gb')}</p>
                          </div>
                          <div>
@@ -837,7 +832,7 @@ export default function DashboardPage() {
                            </div>
                          </div>
                          <div>
-                           <p className="text-sm text-default-600 mb-1">转发配额</p>
+                          <p className="text-sm text-default-600 mb-1">转发上限</p>
                            <p className="font-semibold text-foreground">{formatNumber(tunnel.num)}</p>
                          </div>
                          <div>
@@ -855,7 +850,7 @@ export default function DashboardPage() {
             )}
           </CardBody>
         </Card>
-         )}
+
 
                  {/* 转发配置 */}
          <Card className="border border-gray-200 dark:border-default-200 shadow-md">

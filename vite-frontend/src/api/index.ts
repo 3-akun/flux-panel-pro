@@ -16,11 +16,7 @@ export interface LoginResponse {
 
 export const login = (data: LoginData) => Network.post<LoginResponse>("/user/login", data);
 
-// 用户CRUD操作 - 全部使用POST请求
-export const createUser = (data: any) => Network.post("/user/create", data);
-export const getAllUsers = (pageData: any = {}) => Network.post("/user/list", pageData);
-export const updateUser = (data: any) => Network.post("/user/update", data);
-export const deleteUser = (id: number) => Network.post("/user/delete", { id });
+// 自用概览接口
 export const getSelfUseOverview = () => Network.post("/user/overview");
 
 // 节点CRUD操作 - 全部使用POST请求
@@ -38,11 +34,7 @@ export const updateTunnel = (data: any) => Network.post("/tunnel/update", data);
 export const deleteTunnel = (id: number) => Network.post("/tunnel/delete", { id });
 export const diagnoseTunnel = (tunnelId: number) => Network.post("/tunnel/diagnose", { tunnelId });
 
-// 用户隧道权限管理操作 - 全部使用POST请求
-export const assignUserTunnel = (data: any) => Network.post("/tunnel/user/assign", data);
-export const getUserTunnelList = (queryData: any = {}) => Network.post("/tunnel/user/list", queryData);
-export const removeUserTunnel = (params: any) => Network.post("/tunnel/user/remove", params);
-export const updateUserTunnel = (data: any) => Network.post("/tunnel/user/update", data);
+// 当前用户可用隧道
 export const userTunnel = () => Network.post("/tunnel/user/tunnel");
 
 // 转发CRUD操作 - 全部使用POST请求
@@ -83,9 +75,6 @@ export const deleteSpeedLimit = (id: number) => Network.post("/speed-limit/delet
 
 // 修改密码接口
 export const updatePassword = (data: any) => Network.post("/user/updatePassword", data);
-
-// 重置流量接口
-export const resetUserFlow = (data: { id: number; type: number }) => Network.post("/user/reset", data);
 
 // 网站配置相关接口
 export const getConfigs = () => Network.post("/config/list");

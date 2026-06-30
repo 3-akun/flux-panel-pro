@@ -9,7 +9,6 @@ import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
 import { Switch } from "@heroui/switch";
 import { Alert } from "@heroui/alert";
-import { Accordion, AccordionItem } from "@heroui/accordion";
 import toast from 'react-hot-toast';
 import {
   DndContext,
@@ -46,7 +45,6 @@ import {
   getForwardRuntimeStatus,
   type ForwardRuntimeStatus
 } from "@/api";
-import { JwtUtil } from "@/utils/jwt";
 
 interface Forward {
   id: number;
@@ -126,13 +124,6 @@ const normalizeStrategy = (strategy?: string): string => {
   if (s === "hash") return "hash";
   return "fifo";
 };
-
-// 添加分组接口
-interface UserGroup {
-  userId: number | null;
-  userName: string;
-  tunnelGroups: TunnelGroup[];
-}
 
 interface TunnelGroup {
   tunnelId: number;
@@ -237,19 +228,14 @@ export default function ForwardPage() {
       
       // 切换到直接显示模式时，初始化拖拽排序顺序
       if (newMode === 'direct') {
-        // 在平铺模式下，只对当前用户的转发进行排序
-        const currentUserId = JwtUtil.getUserIdFromToken();
-        let userForwards = forwards;
-        if (currentUserId !== null) {
-          userForwards = forwards.filter((f: Forward) => f.userId === currentUserId);
-        }
+        const sortableForwards = forwards;
         
         // 检查数据库中是否有排序信息
-        const hasDbOrdering = userForwards.some((f: Forward) => f.inx !== undefined && f.inx !== 0);
+        const hasDbOrdering = sortableForwards.some((f: Forward) => f.inx !== undefined && f.inx !== 0);
         
         if (hasDbOrdering) {
           // 使用数据库中的排序信息
-          const dbOrder = userForwards
+          const dbOrder = sortableForwards
             .sort((a: Forward, b: Forward) => (a.inx ?? 0) - (b.inx ?? 0))
             .map((f: Forward) => f.id);
           setForwardOrder(dbOrder);
@@ -267,19 +253,19 @@ export default function ForwardPage() {
             try {
               const orderIds = JSON.parse(savedOrder);
               const validOrder = orderIds.filter((id: number) => 
-                userForwards.some((f: Forward) => f.id === id)
+                sortableForwards.some((f: Forward) => f.id === id)
               );
-              userForwards.forEach((forward: Forward) => {
+              sortableForwards.forEach((forward: Forward) => {
                 if (!validOrder.includes(forward.id)) {
                   validOrder.push(forward.id);
                 }
               });
               setForwardOrder(validOrder);
             } catch {
-              setForwardOrder(userForwards.map((f: Forward) => f.id));
+              setForwardOrder(sortableForwards.map((f: Forward) => f.id));
             }
           } else {
-            setForwardOrder(userForwards.map((f: Forward) => f.id));
+            setForwardOrder(sortableForwards.map((f: Forward) => f.id));
           }
         }
       }
@@ -328,19 +314,14 @@ export default function ForwardPage() {
         
         // 初始化拖拽排序顺序
         if (viewMode === 'direct') {
-          // 在平铺模式下，只对当前用户的转发进行排序
-          const currentUserId = JwtUtil.getUserIdFromToken();
-          let userForwards = forwardsData;
-          if (currentUserId !== null) {
-            userForwards = forwardsData.filter((f: Forward) => f.userId === currentUserId);
-          }
+          const sortableForwards = forwardsData;
           
           // 检查数据库中是否有排序信息
-          const hasDbOrdering = userForwards.some((f: Forward) => f.inx !== undefined && f.inx !== 0);
+          const hasDbOrdering = sortableForwards.some((f: Forward) => f.inx !== undefined && f.inx !== 0);
           
           if (hasDbOrdering) {
             // 使用数据库中的排序信息
-            const dbOrder = userForwards
+            const dbOrder = sortableForwards
               .sort((a: Forward, b: Forward) => (a.inx ?? 0) - (b.inx ?? 0))
               .map((f: Forward) => f.id);
             setForwardOrder(dbOrder);
@@ -357,22 +338,21 @@ export default function ForwardPage() {
             if (savedOrder) {
               try {
                 const orderIds = JSON.parse(savedOrder);
-                // 验证保存的顺序是否仍然有效（只包含当前用户的转发）
                 const validOrder = orderIds.filter((id: number) => 
-                  userForwards.some((f: Forward) => f.id === id)
+                  sortableForwards.some((f: Forward) => f.id === id)
                 );
                 // 添加新的转发ID（如果存在）
-                userForwards.forEach((forward: Forward) => {
+                sortableForwards.forEach((forward: Forward) => {
                   if (!validOrder.includes(forward.id)) {
                     validOrder.push(forward.id);
                   }
                 });
                 setForwardOrder(validOrder);
               } catch {
-                setForwardOrder(userForwards.map((f: Forward) => f.id));
+                setForwardOrder(sortableForwards.map((f: Forward) => f.id));
               }
             } else {
-              setForwardOrder(userForwards.map((f: Forward) => f.id));
+              setForwardOrder(sortableForwards.map((f: Forward) => f.id));
             }
           }
         }
@@ -406,47 +386,27 @@ export default function ForwardPage() {
     return "danger";
   };
 
-  // 按用户和隧道分组转发数据
-  const groupForwardsByUserAndTunnel = (): UserGroup[] => {
-    const userMap = new Map<string, UserGroup>();
+  // 按隧道分组转发数据
+  const groupForwardsByTunnel = (): TunnelGroup[] => {
+    const tunnelMap = new Map<number, TunnelGroup>();
     
     // 获取排序后的转发列表
     const sortedForwards = getSortedForwards();
     
     sortedForwards.forEach(forward => {
-      const userKey = forward.userId ? forward.userId.toString() : 'unknown';
-      const userName = forward.userName || '未知用户';
-      
-      if (!userMap.has(userKey)) {
-        userMap.set(userKey, {
-          userId: forward.userId || null,
-          userName,
-          tunnelGroups: []
-        });
-      }
-      
-      const userGroup = userMap.get(userKey)!;
-      let tunnelGroup = userGroup.tunnelGroups.find(tg => tg.tunnelId === forward.tunnelId);
-      
-      if (!tunnelGroup) {
-        tunnelGroup = {
+      if (!tunnelMap.has(forward.tunnelId)) {
+        tunnelMap.set(forward.tunnelId, {
           tunnelId: forward.tunnelId,
           tunnelName: forward.tunnelName,
           forwards: []
-        };
-        userGroup.tunnelGroups.push(tunnelGroup);
+        });
       }
-      
+      const tunnelGroup = tunnelMap.get(forward.tunnelId)!;
       tunnelGroup.forwards.push(forward);
     });
     
-    // 排序：先按用户名，再按隧道名
-    const result = Array.from(userMap.values());
-    result.sort((a, b) => a.userName.localeCompare(b.userName));
-    result.forEach(userGroup => {
-      userGroup.tunnelGroups.sort((a, b) => a.tunnelName.localeCompare(b.tunnelName));
-    });
-    
+    const result = Array.from(tunnelMap.values());
+    result.sort((a, b) => a.tunnelName.localeCompare(b.tunnelName));
     return result;
   };
 
@@ -885,21 +845,7 @@ export default function ForwardPage() {
     setExportLoading(true);
     
     try {
-      // 根据当前显示模式获取要导出的转发列表
-      let forwardsToExport: Forward[] = [];
-      
-      if (viewMode === 'grouped') {
-        // 分组模式下，获取指定隧道的转发
-        const userGroups = groupForwardsByUserAndTunnel();
-        forwardsToExport = userGroups.flatMap(userGroup => 
-          userGroup.tunnelGroups
-            .filter(tunnelGroup => tunnelGroup.tunnelId === selectedTunnelForExport)
-            .flatMap(tunnelGroup => tunnelGroup.forwards)
-        );
-      } else {
-        // 直接显示模式下，过滤指定隧道的转发
-        forwardsToExport = getSortedForwards().filter(forward => forward.tunnelId === selectedTunnelForExport);
-      }
+      const forwardsToExport = getSortedForwards().filter(forward => forward.tunnelId === selectedTunnelForExport);
       
       if (forwardsToExport.length === 0) {
         toast.error('所选隧道没有转发数据');
@@ -1160,14 +1106,7 @@ export default function ForwardPage() {
       return [];
     }
     
-    // 在平铺模式下，只显示当前用户的转发
-    let filteredForwards = forwards;
-    if (viewMode === 'direct') {
-      const currentUserId = JwtUtil.getUserIdFromToken();
-      if (currentUserId !== null) {
-        filteredForwards = forwards.filter(forward => forward.userId === currentUserId);
-      }
-    }
+    const filteredForwards = forwards;
     
     // 确保过滤后的转发列表有效
     if (!filteredForwards || filteredForwards.length === 0) {
@@ -1430,7 +1369,7 @@ export default function ForwardPage() {
     );
   }
 
-  const userGroups = groupForwardsByUserAndTunnel();
+  const tunnelGroups = groupForwardsByTunnel();
 
   return (
     
@@ -1448,7 +1387,7 @@ export default function ForwardPage() {
               onPress={handleViewModeChange}
               isIconOnly
               className="text-sm"
-              title={viewMode === 'grouped' ? '切换到直接显示' : '切换到分类显示'}
+              title={viewMode === 'grouped' ? '切换到平铺显示' : '切换到按隧道分组'}
             >
               {viewMode === 'grouped' ? (
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -1500,66 +1439,36 @@ export default function ForwardPage() {
 
         {/* 根据显示模式渲染不同内容 */}
         {viewMode === 'grouped' ? (
-          /* 按用户和隧道分组的转发列表 */
-          userGroups.length > 0 ? (
+          /* 按隧道分组的转发列表 */
+          tunnelGroups.length > 0 ? (
             <div className="space-y-6">
-              {userGroups.map((userGroup) => (
-                <Card key={userGroup.userId || 'unknown'} className="shadow-sm border border-divider w-full overflow-hidden">
+              {tunnelGroups.map((tunnelGroup) => (
+                <Card key={tunnelGroup.tunnelId} className="shadow-sm border border-divider w-full overflow-hidden">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between w-full min-w-0">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center flex-shrink-0">
-                          <svg className="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                          <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                           </svg>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h2 className="text-base font-medium text-foreground truncate max-w-[150px] sm:max-w-[250px] md:max-w-[350px] lg:max-w-[450px]">{userGroup.userName}</h2>
+                          <h2 className="text-base font-medium text-foreground truncate max-w-[150px] sm:max-w-[250px] md:max-w-[350px] lg:max-w-[450px]">{tunnelGroup.tunnelName}</h2>
                           <p className="text-xs text-default-500 truncate max-w-[150px] sm:max-w-[250px] md:max-w-[350px] lg:max-w-[450px]">
-                            {userGroup.tunnelGroups.length} 个隧道，
-                            {userGroup.tunnelGroups.reduce((total, tg) => total + tg.forwards.length, 0)} 个转发
+                            {tunnelGroup.forwards.filter(f => f.serviceRunning).length}/{tunnelGroup.forwards.length} 个转发运行中
                           </p>
                         </div>
                       </div>
                       <Chip color="primary" variant="flat" size="sm" className="text-xs flex-shrink-0 ml-2">
-                        用户
+                        隧道
                       </Chip>
                     </div>
                   </CardHeader>
                   
                   <CardBody className="pt-0">
-                    <Accordion variant="splitted" className="px-0">
-                      {userGroup.tunnelGroups.map((tunnelGroup) => (
-                        <AccordionItem
-                          key={tunnelGroup.tunnelId}
-                          aria-label={tunnelGroup.tunnelName}
-                          title={
-                            <div className="flex items-center justify-between w-full min-w-0 pr-4">
-                              <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <div className="w-8 h-8 bg-success-100 dark:bg-success-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-                                  <svg className="w-4 h-4 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                  </svg>
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <h3 className="text-sm font-medium text-foreground truncate max-w-[120px] sm:max-w-[200px] md:max-w-[300px] lg:max-w-[400px]">{tunnelGroup.tunnelName}</h3>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                                <Chip variant="flat" size="sm" className="text-xs">
-                                  {tunnelGroup.forwards.filter(f => f.serviceRunning).length}/{tunnelGroup.forwards.length}
-                                </Chip>
-                              </div>
-                            </div>
-                          }
-                          className="shadow-none border border-divider"
-                        >
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 p-4">
-                            {tunnelGroup.forwards.map((forward) => renderForwardCard(forward, undefined))}
-                          </div>
-                        </AccordionItem>
-                      ))}
-                    </Accordion>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 p-1">
+                      {tunnelGroup.forwards.map((forward) => renderForwardCard(forward, undefined))}
+                    </div>
                   </CardBody>
                 </Card>
               ))}
